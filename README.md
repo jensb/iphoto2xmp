@@ -14,6 +14,22 @@ Apple's public AlbumData.xml API does not expose all of this information, so thi
 EXIF and other data which was in the original images is of course preserved but *NOT* copied to the XMP sidecar file.
 
 
+## Requirements
+
+    require 'progressbar'       # currently disabled, will be enabled when debug output has been removed
+    require 'find'              # required to find orphaned images
+    require 'fileutils'         # required to move and link files around 
+    require 'sqlite3'           # required to access iPhoto database
+    require 'time'              # required to convert integer timestamps
+    require 'cfpropertylist'    # required to read binary plist blobs in SQLite3 dbs, 'plist' gem can't do this
+    require 'erb'               # template engine
+
+
+## Usage
+
+    ruby iphoto2xmp.rb "~/Pictures/My iPhoto library" "~/Pictures/Export Here"
+
+
 ## Credits
 The original idea was taken from https://gist.github.com/lpar/2191225, but the script has been heavily modified to access more iPhoto metadata (not just AlbumData.xml), distinguish between original and modified photos, and not rely on exiftool. This also brings a huge speed improvement.
 
@@ -31,6 +47,8 @@ The script can currently export the following metadata:
  * Edited and original images, edit operation (eg. "Crop", "WhiteBalance", ...)
  * Faces and face coordinates (still buggy for cropped images, see below)
  * Hidden, Starred, Flagged, Editable, Original, isInTrash flags (as keywords)
+ * iPhoto and iOS edit operations as additional *.plist sidecar files (so far, not all are decoded)
+
 
 ## Planned Features (TODO)
 The script *should* (at some point) also do the following.

@@ -1,62 +1,26 @@
 #!/usr/bin/env ruby
 # encoding: UTF-8
 
-# This script extracts your photos from iPhoto, preserving as much metadata
-# as possible for Adobe Bridge, Adobe Lightroom, AfterShot Pro, or whatever.
-#
-# Features:
-#
-# * If a photo doesn't seem to be an any event, it's placed into a folder 
-#   named after the master folder name, which typically reflects the 
-#   original event name or folder name used when the photo was imported
-#   into iPhoto.
-#
-# * Location names are not available in iPhoto's XML file, but longitude 
-#   and latitude are exported. Please address complaints to Apple.
-#
-# * Cropping and editing performed in iPhoto is not preserved; your photos
-#   revert to their original 'master' state. Again, this is because Apple
-#   does not seem to make the necessary information available.
-#   => Library.apdb::RKImageAdjustment
-#
-# * If files are referenced in iPhoto's database but do not exist because
-#   iPhoto has lost them, their names are written to a log so you can 
-#   trawl through backups to try and recover them.
-#
-# * During the third stage of the process, the code searches for any files 
-#   which are in iPhoto's library as master images, but not known to its 
-#   database and hence not processed earlier. These are linked into a 
-#   'Lost and Found' folder. In my case, most of them were duplicate copies
-#   of files that had already been migrated.
+# Export an Apple iPhoto image library to a new directory (using hardlinks)
+# with all metadata saved in XMP sidecar files.
 #
 # Requires:
-#
-# * Phil Harvey's exiftool to write the XMP files, see
-#     http://owl.phy.queensu.ca/~phil/exiftool/
-#
-# * Ruby 1.9.3. Not tested with 1.8.
-#
-# * nokogiri, progressbar RubyGems
+# * Tested with Ruby 2.1 and 2.2, not below. Please report errors.
+# * gems: see below 'require' list
 #
 # Usage:
-#
-# iphoto2xmp "~/Pictures/My iPhoto library" "~/Pictures/Export Here"
+#   ruby iphoto2xmp.rb "~/Pictures/My iPhoto library" "~/Pictures/Export Here"
 #
 ##########################################################################
 #
 # TODO:
 #
-# * Export tags from Library.apdb::RKMaster, RKKeyword, RKKeywordForVersion [DONE]
-#
 # * Export location 'names'
 #   Database/Properties.apdb::RKPlace, RKPlace:: 
 #   => Properties.apdb::RKPlace, RKPlaceName(placeId -> RKPlace.modelId)
 #
-# * Export Modified/Original photos. How do you mark these in XMP sidecars?
+# * Group Modified/Original photos in XMP sidecars
 #   => from RKVersion.isOriginal und masterUuid
-#
-# * Export faces and location rectangles within the image.
-#   => from AlbumData.xml
 #
 # * Export photos in Albums as "Album/XXX" Keywords.
 #
@@ -64,20 +28,11 @@
 #
 # * Export Slideshows, Calendars, Cards, Books etc. at least as keyword collections.
 #
-# * Rename RAW files to be able to create XMP sidecar for RAW and JPEG files (same filename!)
-#   or group RAW and JPG files? -> https://gist.github.com/nudomarinero/af88acf44868a9e5bcdc
+# * Group RAW and JPG files? -> https://gist.github.com/nudomarinero/af88acf44868a9e5bcdc
 #                               -> INSERT into ImageRelations VALUES (?, ?, 2) [...]
 #   or: "Group Selected by Time" in Digikam (= manually)
 #
-## From "iphoto to disk" | strings:
-# SELECT modelId AS modelId, uuid AS uuid, name AS name, minImageDate AS minImageDate FROM RKFolder WHERE parentFolderUuid='AllProjectsItem' AND posterVersionUuid IS NOT NULL AND isInTrash=0
-# SELECT attachedToUuid AS attachedToUuid, note AS note FROM RKNote WHERE attachedToUuid='%@'
-# SELECT RKVersion.modelId AS modelId, RKVersion.uuid AS uuid, RKVersion.name AS name, RKMaster.type AS type, RKVersion.imageDate AS imageDate FROM RKVersion INNER JOIN RKMaster ON RKMaster.uuid = RKVersion.masterUuid WHERE RKVersion.showInLibrary = 1 AND RKVersion.isInTrash = 0 AND RKVersion.isHidden = 0 AND RKVersion.projectUuid = '%@'
-# SELECT RKVersion.uuid AS uuid, RKKeyword.name AS name FROM RKKeywordForVersion INNER JOIN RKversion ON RKKeywordForVersion.versionId=RKVersion.modelId INNER JOIN RKKeyword ON RKKeywordForVersion.keywordId=RKKeyword.modelId WHERE RKVersion.uuid='%@'
-#
-#
 #######################################################################
-#
 
 require 'progressbar'       # just eye candy
 require 'find'
@@ -103,8 +58,10 @@ end
 
 File.directory?(outdir) || Dir.mkdir(outdir)
 
+
 # just some eye candy for output
 class String; def bold; "\e[1m#{self}\e[21m" end; end
+
 
 # Link photo (original or modified version) to destination directory
 def link_photo(basedir, outdir, photo, imgfile, origfile)
@@ -128,6 +85,7 @@ def link_photo(basedir, outdir, photo, imgfile, origfile)
   # With extension:
   "#{destpath}.xmp"
 end
+
 
 # iPhoto internally stores times as integer values starting count at 2001-01-01. 
 # Correct to be able to use parsed date values.
@@ -219,7 +177,7 @@ puts "Faces)."
 #
 # Stage 2: Big loop through all photos
 #
-basedir = iphotodir #iphoto['Archive Path']
+basedir = iphotodir
 puts "Phase 2/3: Exporting iPhoto archive\n  from #{basedir}\n  to   #{outdir}".bold
 #bar = ProgressBar.new("Exporting", masters.length)
 
@@ -244,6 +202,7 @@ masters.each do |photo|
   next if done_xmp[origxmppath]    # do not overwrite master XMP twice
   # link_photo needs origpath to do size comparison for modified images
   # only perform link_photo for "non-videos" and when a modified image should exist
+  # since iPhoto creates "link mp4" files without real video content for "modified" videos (useless)
   if photo['version_number'].to_i > 0 and photo['mediatype'] != 'VIDT'
     modxmppath  = link_photo(basedir, outdir, photo, modpath, origpath) 
   end
@@ -261,11 +220,11 @@ masters.each do |photo|
   #
   xmp = xmp_template.dup
 
-  # Caption is always applied to the edited image (if any), not the master.
+  # The image caption in iPhoto is always applied to the edited image (if any), not the master.
   # Apply it to both images if found in edited image.
   #@title = photo['title']
   @caption = photo['caption']
-  @uuid = photo['version_number'].to_i > 0 ? photo['uuid'] : photo['master_uuid']
+  @uuid = photo['version_number'].to_i > 0 ? photo['uuid'] : photo['master_uuid']   # avoid duplicate uuids
   @description = photodescs[photo['id'].to_i]
 
   # Rating is always applied to the edited image (not the master). Apply to both!
@@ -287,7 +246,13 @@ masters.each do |photo|
 
   # Get keywords. Convert iPhoto specific flags as keywords too.
   @keylist = Array.new
-  photokwheader, *photokw = librarydb.execute2("SELECT RKVersion.uuid AS uuid, RKKeyword.modelId AS modelId, RKKeyword.name AS name FROM RKKeywordForVersion INNER JOIN RKversion ON RKKeywordForVersion.versionId=RKVersion.modelId INNER JOIN RKKeyword ON RKKeywordForVersion.keywordId=RKKeyword.modelId WHERE RKVersion.uuid='#{photo['uuid']}'")
+  photokwheader, *photokw = librarydb.execute2("SELECT
+      RKVersion.uuid AS uuid
+     ,RKKeyword.modelId AS modelId
+     ,RKKeyword.name AS name
+   FROM RKKeywordForVersion INNER JOIN RKversion ON RKKeywordForVersion.versionId=RKVersion.modelId
+                            INNER JOIN RKKeyword ON RKKeywordForVersion.keywordId=RKKeyword.modelId
+   WHERE RKVersion.uuid='#{photo['uuid']}'")
   @keylist = photokw.collect {|k| k['name'] }
   @keylist << "iPhoto/Hidden" if photo["hidden"]==1
   @keylist << "iPhoto/Flagged" if photo["flagged"]==1
@@ -300,7 +265,7 @@ masters.each do |photo|
   # but save the others in the XMP edit history.
   edithead, *edits = librarydb.execute2(
     "SELECT a.name AS adj_name    -- RKRawDecodeOperation, RKStraightenCropOperation, ...
-                                  -- RAW-Decoding und Rotation ist ggf. keine Bearbeitung im engeren Sinne
+                                  -- RAW-Decoding and Rotation are not edit operations, strictly speaking
            ,a.adjIndex as adj_index
            ,a.data as data
      FROM RKImageAdjustment a
@@ -330,7 +295,8 @@ masters.each do |photo|
 
   # If photo was edited, check if dimensions were changed (crop, rotate, iOS edit)
   # since this would require recalculation of the face rectangle locations.
-  # Unfortunately, the crop info is saved in a PropertyList blob within the 'data' column. Who designs this crap anyway?
+  # Unfortunately, the crop info is saved in a PropertyList blob within the 'data' column of the DB.
+  # Can it be more cryptic please? Who designs this crap anyway?
   crop_startx = crop_starty = crop_width = crop_height = 0
   if photo['version_number'].to_i > 0
     print "  Edit: " #{edits.collect{|e| e['adj_name'] }.join(",").gsub(/RK|Operation/, '')}"
