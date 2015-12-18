@@ -1,0 +1,449 @@
+#!/usr/bin/env ruby
+# encoding: UTF-8
+
+# This script extracts your photos from iPhoto, preserving as much metadata
+# as possible for Adobe Bridge, Adobe Lightroom, AfterShot Pro, or whatever.
+#
+# Features:
+#
+# * If a photo doesn't seem to be an any event, it's placed into a folder 
+#   named after the master folder name, which typically reflects the 
+#   original event name or folder name used when the photo was imported
+#   into iPhoto.
+#
+# * Location names are not available in iPhoto's XML file, but longitude 
+#   and latitude are exported. Please address complaints to Apple.
+#
+# * Cropping and editing performed in iPhoto is not preserved; your photos
+#   revert to their original 'master' state. Again, this is because Apple
+#   does not seem to make the necessary information available.
+#   => Library.apdb::RKImageAdjustment
+#
+# * If files are referenced in iPhoto's database but do not exist because
+#   iPhoto has lost them, their names are written to a log so you can 
+#   trawl through backups to try and recover them.
+#
+# * During the third stage of the process, the code searches for any files 
+#   which are in iPhoto's library as master images, but not known to its 
+#   database and hence not processed earlier. These are linked into a 
+#   'Lost and Found' folder. In my case, most of them were duplicate copies
+#   of files that had already been migrated.
+#
+# Requires:
+#
+# * Phil Harvey's exiftool to write the XMP files, see
+#     http://owl.phy.queensu.ca/~phil/exiftool/
+#
+# * Ruby 1.9.3. Not tested with 1.8.
+#
+# * nokogiri, progressbar RubyGems
+#
+# Usage:
+#
+# iphoto2xmp "~/Pictures/My iPhoto library" "~/Pictures/Export Here"
+#
+##########################################################################
+#
+# TODO:
+#
+# * Export tags from Library.apdb::RKMaster, RKKeyword, RKKeywordForVersion [DONE]
+#
+# * Export location 'names'
+#   Database/Properties.apdb::RKPlace, RKPlace:: 
+#   => Properties.apdb::RKPlace, RKPlaceName(placeId -> RKPlace.modelId)
+#
+# * Export Modified/Original photos. How do you mark these in XMP sidecars?
+#   => from RKVersion.isOriginal und masterUuid
+#
+# * Export faces and location rectangles within the image.
+#   => from AlbumData.xml
+#
+# * Export photos in Albums as "Album/XXX" Keywords.
+#
+# * Export Smart Albums rules into a text file so that they can be recreated.
+#
+# * Export Slideshows, Calendars, Cards, Books etc. at least as keyword collections.
+#
+# * Rename RAW files to be able to create XMP sidecar for RAW and JPEG files (same filename!)
+#   or group RAW and JPG files? -> https://gist.github.com/nudomarinero/af88acf44868a9e5bcdc
+#                               -> INSERT into ImageRelations VALUES (?, ?, 2) [...]
+#   or: "Group Selected by Time" in Digikam (= manually)
+#
+## From "iphoto to disk" | strings:
+# SELECT modelId AS modelId, uuid AS uuid, name AS name, minImageDate AS minImageDate FROM RKFolder WHERE parentFolderUuid='AllProjectsItem' AND posterVersionUuid IS NOT NULL AND isInTrash=0
+# SELECT attachedToUuid AS attachedToUuid, note AS note FROM RKNote WHERE attachedToUuid='%@'
+# SELECT RKVersion.modelId AS modelId, RKVersion.uuid AS uuid, RKVersion.name AS name, RKMaster.type AS type, RKVersion.imageDate AS imageDate FROM RKVersion INNER JOIN RKMaster ON RKMaster.uuid = RKVersion.masterUuid WHERE RKVersion.showInLibrary = 1 AND RKVersion.isInTrash = 0 AND RKVersion.isHidden = 0 AND RKVersion.projectUuid = '%@'
+# SELECT RKVersion.uuid AS uuid, RKKeyword.name AS name FROM RKKeywordForVersion INNER JOIN RKversion ON RKKeywordForVersion.versionId=RKVersion.modelId INNER JOIN RKKeyword ON RKKeywordForVersion.keywordId=RKKeyword.modelId WHERE RKVersion.uuid='%@'
+#
+#
+#######################################################################
+#
+
+require 'progressbar'       # just eye candy
+require 'find'
+require 'fileutils'
+require 'sqlite3'
+require 'time'              # required to convert integer timestamps
+require 'cfpropertylist'    # required to read binary plist blobs in SQLite3 dbs, 'plist' gem can't do this
+require 'erb'               # template engine
+
+EXIFTOOL = `which exiftool`.chop
+if EXIFTOOL == ''
+  puts "Can't find exiftool in PATH. You can obtain it from\n  http://owl.phy.queensu.ca/~phil/exiftool/"
+  exit 1
+end
+
+iphotodir = ARGV[0]
+outdir = ARGV[1]
+
+unless iphotodir && outdir
+  puts "Usage: #{$0} ~/Pictures/iPhoto\\ Library ~/Pictures/OutputDir"
+  exit 1
+end
+
+File.directory?(outdir) || Dir.mkdir(outdir)
+
+# just some eye candy for output
+class String; def bold; "\e[1m#{self}\e[21m" end; end
+
+# Link photo (original or modified version) to destination directory
+def link_photo(basedir, outdir, photo, imgfile, origfile)
+  imgpath  = "#{basedir}/#{imgfile}"
+  destpath = photo['rollname']  ?  ("#{outdir}/#{photo['rollname']}/#{File.basename(imgpath)}")  :  "#{outdir}#{imgfile}"
+  destdir  = File.dirname(destpath)
+  if origfile and File.exist?(destpath) and File.size?(imgpath) != File.size?("#{basedir}/#{origfile}")
+    # assume modified version has the same filename -> append "_v1" to basename to avoid overwriting
+    destpath.sub!(/\.([^.]*)$/, '_v1.\1')
+  end
+  File.directory?(destdir) || FileUtils.mkpath(destdir)
+  if File.exist?(imgpath)
+    $known[imgpath] = true
+    File.exist?(destpath)  ||  FileUtils.ln(imgpath, destpath)
+  else
+    $missing.puts(imgpath)
+    $problems = true
+  end
+  # Work out the XMP sidecar location
+  # Without extension: File.dirname(destpath) + '/' + File.basename(destpath, File.extname(destpath)) + ".xmp"
+  # With extension:
+  "#{destpath}.xmp"
+end
+
+# iPhoto internally stores times as integer values starting count at 2001-01-01. 
+# Correct to be able to use parsed date values.
+# Returns "YYYY-MM-DDTHH:MM:SS+NNNN" RFC 3339 string for XMP file.
+def parse_date(intdate)
+  return "" unless intdate
+  diff = Time.parse('2001-01-01 +0100')
+  Time.at(intdate + diff.to_i).to_datetime.rfc3339
+end
+
+
+##########################################################################
+# Stage 1: Get main image info.
+# Cannot use AlbumData.xml because a lot of info is not listed at all in AlbumData.xml but should be exported.
+# Examples: keywords, hidden photos, trashcan, location *names*, ...
+##########################################################################
+print "Phase 1: Reading iPhoto SQLite data (Records: Library ".bold
+librarydb = SQLite3::Database.new("#{iphotodir}/Database/apdb/Library.apdb")
+librarydb.results_as_hash = true  # gibt [{"modelId"=>1, "uuid"=>"SwX6W9...", "name"=>".."
+#keyhead, *keywords = librarydb.execute2("SELECT modelId, uuid, name, shortcut FROM RKKeyword")
+#puts "... Available Keywords: #{keywords.collect {|k| k['name'] }.join(", ")}"
+masterhead, *masters = librarydb.execute2(
+ "SELECT v.modelId AS id
+        ,v.masterId AS master_id
+        ,v.name AS caption 
+        ,f.name AS rollname
+        ,f.modelId AS roll
+        ,v.uuid AS uuid
+        ,m.uuid AS master_uuid
+        ,v.versionNumber AS version_number  -- 1 if edited image, 0 if original image
+        ,v.masterUuid AS master_uuid  -- master (unedited) image. Required for face rectangle conversion.
+        ,v.mainRating AS rating       -- TODO: Rating is always applied to the master image, not the edited one
+        ,m.type AS mediatype          -- IMGT, VIDT
+        ,m.imagePath AS imagepath     -- 2015/04/27/20150427-123456/FOO.RW2, ergibt Masters/$imagepath und
+                                        -- Previews/dirname($imagepath)/$uuid/basename($imagepath)
+        ,v.imageDate AS date          -- for edited or rotated or converted images, this contains DateTimeModified!
+        ,m.imageDate AS datem         --
+        ,m.fileCreationDate AS datem_creation
+        ,m.fileModificationDate AS datem_mod
+        ,replace(i.name, ' @ ', 'T') AS date_import -- contains datestamp of import procedure for a group of files 
+
+        ,v.imageTimeZoneName AS timezone
+        ,v.exifLatitude AS latitude
+        ,v.exifLongitude AS longitude
+        ,v.isHidden AS hidden
+        ,v.isFlagged AS flagged
+        ,v.isOriginal AS original
+        ,m.isInTrash AS in_trash
+        ,v.masterHeight AS master_height        -- Height of original image (master)
+        ,v.masterWidth AS master_width          -- Width of original image (master)
+        ,v.processedHeight AS processed_width   -- Height of processed (eg. cropped, rotated) image
+        ,v.processedWidth AS processed_width    -- Width of processed (eg. cropped, rotated) image
+   FROM RKVersion v
+    LEFT JOIN RKFolder f ON v.projectUuid=f.uuid
+    LEFT JOIN RKMaster m ON m.uuid = v.masterUuid
+    LEFT JOIN RKImportGroup i ON m.importGroupUuid = i.uuid
+ ")
+print "#{masters.count}; "
+
+# TODO: Add iPhoto <9.1(?) type notes to Events. Only in main iPhoto Library, not in test library.
+notehead, notes = librarydb.execute2("SELECT * from RKNote")
+
+propertydb = SQLite3::Database.new("#{iphotodir}/Database/apdb/Properties.apdb")
+propertydb.results_as_hash = true
+placehead, *places = propertydb.execute2("SELECT 
+  p.modelId, p.uuid, p.defaultName, p.minLatitude, p.minLongitude, p.maxLatitude, p.maxLongitude, p.centroid, p.userDefined 
+  FROM RKPlace p");
+# placehead, *places = propertydb.execute2("SELECT p.modelId, p.uuid, p.defaultName, p.minLatitude, p.minLongitude, p.maxLatitude, p.maxLongitude, p.centroid, p.userDefined, n.language, n.description FROM RKPlace p INNER JOIN RKPlaceName n ON p.modelId=n.placeId");
+print "Properties #{places.count}; "
+
+# Get description text of all photos.
+deschead, *descs = propertydb.execute2("SELECT
+  i.modelId AS id, i.versionId AS versionId, i.modDate AS modDate, s.stringProperty AS string
+FROM RKIptcProperty i LEFT JOIN RKUniqueString s ON i.stringId=s.modelId
+WHERE i.propertyKey = 'Caption/Abstract' ORDER BY versionId")
+photodescs = descs.inject({}) {|h,desc| h[desc['versionId']] = desc['string']; h }
+# FIXME: strictly speaking, this is the date of adding the description, not the last edit date
+photomoddates = descs.inject({}) {|h,desc| h[desc['versionId']] = desc['modDate']; h }
+print "Description #{descs.count}; "
+
+facedb = SQLite3::Database.new("#{iphotodir}/Database/apdb/Faces.db")
+facedb.results_as_hash = true
+puts "Faces)."
+
+#puts "descs = #{descs.inspect}"
+#puts "photodescs = #{photodescs.inspect}"
+
+
+#
+# Stage 2: Big loop through all photos
+#
+basedir = iphotodir #iphoto['Archive Path']
+puts "Phase 2/3: Exporting iPhoto archive\n  from #{basedir}\n  to   #{outdir}".bold
+#bar = ProgressBar.new("Exporting", masters.length)
+
+$missing = File.open("#{outdir}/missing.log","w")
+$problems = false
+$known = Hash.new
+done_xmp = Hash.new
+xmp_template = File.read("#{File.expand_path(File.dirname(__FILE__))}/iphoto2xmp_template.xmp.erb")
+
+# iPhoto almost always stores a second version (Preview) of every image. In my case, out of 41000 images
+# only four had just a single version and one had six versions (print projects). So we can safely assume
+# one 'original' and one 'modified' version exist of each image and just loop through the master images.
+masters.each do |photo|
+
+  origpath = "Masters/#{photo['imagepath']}"
+  
+  # doesn't work, various info in RKVersion is different (eg. caption)
+  # next if $known["#{basedir}/#{origpath}"]
+  # Preview can be mp4, mov, jpg, whatever - but not RAW/RW2, it seems.
+  modpath = "Previews/#{File.dirname(photo['imagepath'])}/#{photo['uuid']}/#{File.basename(photo['imagepath']).gsub(/PNG$|JPG$|RW2$/, 'jpg')}"
+  origxmppath = link_photo(basedir, outdir, photo, origpath, nil)
+  next if done_xmp[origxmppath]    # do not overwrite master XMP twice
+  # link_photo needs origpath to do size comparison for modified images
+  # only perform link_photo for "non-videos" and when a modified image should exist
+  if photo['version_number'].to_i > 0 and photo['mediatype'] != 'VIDT'
+    modxmppath  = link_photo(basedir, outdir, photo, modpath, origpath) 
+  end
+
+  @date = parse_date(photo['date'])
+  @date_master = parse_date(photo['datem'])
+  puts "##{photo['id']}(##{photo['master_id']}): #{photo['caption']}, #{photo['uuid'][0..9]}…/#{photo['master_uuid'][0..9]}…, create: #{@date_master} / edit: #{@date}".bold
+  puts "  Desc: #{photodescs[photo['id'].to_i]}"  if photodescs[photo['id'].to_i]
+  puts "  Orig: #{origpath}, exists? #{File.exist?("#{basedir}/#{origpath}")}"
+  puts "  Mod : #{modpath}, exists? #{File.exist?("#{basedir}/#{modpath}")}" if File.exist?("#{basedir}/#{modpath}")
+
+  #
+  # Build up objects with the metadata in using an ERB template. 
+  # LibXML is too complicated and Nokogiri can't properly handle RDF type documents. :( 
+  #
+  xmp = xmp_template.dup
+
+  # Caption is always applied to the edited image (if any), not the master.
+  # Apply it to both images if found in edited image.
+  #@title = photo['title']
+  @caption = photo['caption']
+  @uuid = photo['version_number'].to_i > 0 ? photo['uuid'] : photo['master_uuid']
+  @description = photodescs[photo['id'].to_i]
+
+  # Rating is always applied to the edited image (not the master). Apply to both!
+  @rating = photo['rating']       # Value 0 (no rating) and 1..5, like iPhoto
+  @hidden = photo['hidden']       # set PickLabel to hidden flag -> would set value '1' which means 'rejected'
+  @flagged = photo['flagged']     # set ColorLabel to flagged, would set value '1' which means 'red'
+  @date_meta = parse_date(photomoddates[photo['id']])
+
+  # TODO: save GPS location info in XMP file (RKVersion::overridePlaceId -> Properties::RKPlace
+  #       (user boundaryData?)
+  @longitude = photo['longitude']
+  @latitude  = photo['latitude']
+  @gpscity = ''
+  @gpsstate = ''
+  @gpscountryname = ''
+  @gpslocation = ''
+  @gps3lettercountrycode = ''
+
+
+  # Get keywords. Convert iPhoto specific flags as keywords too.
+  @keylist = Array.new
+  photokwheader, *photokw = librarydb.execute2("SELECT RKVersion.uuid AS uuid, RKKeyword.modelId AS modelId, RKKeyword.name AS name FROM RKKeywordForVersion INNER JOIN RKversion ON RKKeywordForVersion.versionId=RKVersion.modelId INNER JOIN RKKeyword ON RKKeywordForVersion.keywordId=RKKeyword.modelId WHERE RKVersion.uuid='#{photo['uuid']}'")
+  @keylist = photokw.collect {|k| k['name'] }
+  @keylist << "iPhoto/Hidden" if photo["hidden"]==1
+  @keylist << "iPhoto/Flagged" if photo["flagged"]==1
+  @keylist << "iPhoto/Original" if photo["original"]==1
+  @keylist << "iPhoto/inTrash" if photo["in_trash"]==1
+  puts "  Tags: #{photokw.collect {|k| "#{k['name']}(#{k['modelId']})" }.join(", ")}" unless photokw.empty?
+
+
+  # Get edits. Discard pseudo-Edits like RAW decoding and (perhaps?) rotations
+  # but save the others in the XMP edit history.
+  edithead, *edits = librarydb.execute2(
+    "SELECT a.name AS adj_name    -- RKRawDecodeOperation, RKStraightenCropOperation, ...
+                                  -- RAW-Decoding und Rotation ist ggf. keine Bearbeitung im engeren Sinne
+           ,a.adjIndex as adj_index
+           ,a.data as data
+     FROM RKImageAdjustment a
+    WHERE a.versionUuid='#{photo['uuid']}'")
+  # TODO: Save iPhoto/iOS edit operations in XMP structure (digiKam:history?)
+ 
+
+  # Link: Faces.apdb::RKDetectedFace::masterUuid == Library.apdb::RKMaster::uuid
+  facehead, *faces = facedb.execute2(
+    "SELECT d.modelId               -- primary key
+         ,d.uuid AS detect_uuid   -- primary key
+         ,d.masterUuid            -- --> Library::RKMaster::uuid
+         ,d.faceKey               -- --> RKFaceName::faceKey
+         ,d.topLeftX    ,d.topLeftY    ,d.topRightX    ,d.topRightY     -- *relative* coordinates within *original* image (0..1)
+         ,d.bottomLeftX ,d.bottomLeftY ,d.bottomRightX ,d.bottomRightY  -- *relative* coordinates within *original* image (0..1)
+         ,d.confidence
+         ,d.rejected
+         ,d.ignore
+         ,n.uuid AS name_uuid
+         ,n.name AS name
+         ,n.fullName AS full_name
+         ,n.email AS email
+      FROM RKDetectedFace d
+      LEFT JOIN RKFaceName n ON n.faceKey=d.faceKey
+      WHERE d.masterUuid='#{photo['master_uuid']}'
+      ORDER BY d.modelId");  # LEFT JOIN because we also want unknown faces
+
+  # If photo was edited, check if dimensions were changed (crop, rotate, iOS edit)
+  # since this would require recalculation of the face rectangle locations.
+  # Unfortunately, the crop info is saved in a PropertyList blob within the 'data' column. Who designs this crap anyway?
+  crop_startx = crop_starty = crop_width = crop_height = 0
+  if photo['version_number'].to_i > 0
+    print "  Edit: " #{edits.collect{|e| e['adj_name'] }.join(",").gsub(/RK|Operation/, '')}"
+    edits.each do |edit|
+      check = false
+      edit_plist_hash = CFPropertyList.native_types(CFPropertyList::List.new(data: edit['data']).value)
+      # save raw PropertyList data in additional sidecar file for later analysis
+      j = File.open(modxmppath.gsub(/xmp/, "plist_#{edit['adj_name']}"), 'w')
+      j.puts(edit_plist_hash.inspect)
+      j.close
+      
+      case edit['adj_name'] 
+        when "RKCropOperation"
+          # image was cropped, region metadata cannot be calculated directly, need crop info
+          check = edit_plist_hash["$objects"][13] == "inputRotation"
+          # eg. 1612, 2109, 67, 1941 - crop positions
+          crop_startx = edit_plist_hash["$objects"][20]    # xstart: position from the left
+          crop_starty = edit_plist_hash["$objects"][24]    # ystart: position from the bottom!
+          crop_width  = edit_plist_hash["$objects"][22]    # xsize:  size in pixels from xstart
+          crop_height = edit_plist_hash["$objects"][23]    # ysize:  size in pixels from ystart
+          print "Crop (#{crop_startx}x#{crop_starty}+#{crop_width}+#{crop_height}), "
+        when "RKStraightenCropOperation"
+          # image was straightened and thus implicitly cropped, region metadata must be adjusted
+          # TODO: calculate region shift from rotational angle.
+          check = edit_plist_hash["$objects"][9] == "inputRotation"
+          # factor examples: 1.04125 ~ 1.0° ; 21.142332 ~ 5.2° ; 19.0507 ~ -19,1°
+          crop_rotation_factor = edit_plist_hash["$objects"][10]    # inputRotation
+          print "StraightenCrop (#{crop_rotation_factor}), "
+        when "DGiOSEditsoperation"
+          # TODO: image was edited in iOS which creates its own XMP file (with proprietary aas and crs tags).
+          print "iOSEdits (???), "
+        else
+          # No region adjustment required for RawDecode, Whitebalance, ShadowHighlight, Exposure, NoiseReduction,
+          # ProSharopen, iPhotoRedEye, Retouch, iPhotoEffects, and possibly others
+      end
+    end # edits.each
+    puts ""
+  end
+
+  # Add faces to BOTH original and edited images.
+  # If edited image is cropped, modify face rectangle positions accordingly.
+  # TODO: both Library::RKVersionFaceContent and Faces::RKDetectedFace contain face rectangle data.
+  # Which is better?
+  xmp_mod = xmp.dup
+
+  @orig_faces = faces.collect do |face|
+    topleftx = "%.8f" % (face['topLeftX'].to_f)
+    toplefty = "%.8f" % (1-face['topLeftY'].to_f)   # iPhoto counts Y dimension from the bottom, thus "1-y"
+    width    = "%.8f" % ((face['bottomRightX'] - face['topLeftX']).abs)
+    height   = "%.8f" % ((face['bottomRightY'] - face['topLeftY']).abs)
+    { 'topleftx' => topleftx, 'toplefty' => toplefty, 'width' => width, 'height' => height,
+      'full_name' => face['full_name'], 'email' => face['email'] }
+  end
+  @orig_faces.each {|f|
+    puts "  FaceOrig: #{f['topleftx']} x #{f['toplefty']} +#{f['width']} +#{f['height']};  #{f['full_name']}\t "
+  }
+
+  @crop_faces = []
+  @crop_faces = faces.collect do |face|
+    topleftx = "%.8f" % ((face['topLeftX'] * photo['master_width'].to_i - crop_startx) / crop_width)
+    toplefty = "%.8f" % ((face['topLeftY'] * photo['master_height'].to_i - 1+crop_starty) / crop_height)
+    width    = "%.8f" % ((face['bottomRightX']-face['topLeftX']).abs * photo['master_width'].to_i / crop_width)
+    height   = "%.8f" % ((face['bottomRightY']-face['topLeftY']).abs * photo['master_height'].to_i / crop_height)
+    { 'topleftx' => topleftx, 'toplefty' => toplefty, 'width' => width, 'height' => height,
+      'full_name' => face['full_name'], 'email' => face['email'] }
+  end if crop_startx > 0
+  @crop_faces.each {|f|
+    puts "  FaceCrop: #{f['topleftx']} x #{f['toplefty']} +#{f['width']} +#{f['height']};  #{f['full_name']}\t "
+  }
+
+  # TODO: additionally specify modified image as second version of original file in XMP (DerivedFrom?)
+  unless(File.exist?(origxmppath))
+    j = File.open(origxmppath, 'w')
+    j.puts(ERB.new(xmp, 0, ">").result)
+    j.close
+    done_xmp[origxmppath] = true
+  end
+  if photo['version_number'].to_i == 1 and modxmppath and !File.exist?(modxmppath)
+    @orig_faces = @crop_faces if crop_startx > 0
+    j = File.open(modxmppath,  'w')
+    j.puts(ERB.new(xmp_mod, 0, ">").result)
+    j.close
+  end
+
+#  bar.inc
+end
+
+$missing.close
+if $problems
+  puts "\nOne or more files were missing from your iTunes library!"
+  puts File.read("#{outdir}/missing.log")
+  puts "You can find this list in missing.log in the output directory."
+else
+  File.unlink("#{outdir}/missing.log")
+end
+
+#
+# Stage 3: 
+#
+puts "\n\nPhase 3/3: Searching for lost masters"
+
+Find.find("#{iphotodir}/Masters").each do |file|
+  ext = File.extname(file)
+  if ext.match(/\.(PNG|BMP|RAW|RW2|CR2|CRW|TIF|DCR|DNG)/i)
+    if !$known[file]
+      imgfile = file.sub(/^#{iphotodir}\/Masters\//i,'')
+      destfile = "#{outdir}/Lost and Found/#{imgfile}"
+      destdir = File.dirname(destfile)
+      FileUtils.mkpath(destdir) unless File.directory?(destdir)
+      FileUtils.ln(file, destfile) unless File.exists?(destfile)
+      puts "  Found #{imgfile}"
+    end
+  end
+end
+
+# vim:set ts=2 expandtab:

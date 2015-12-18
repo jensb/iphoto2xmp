@@ -1,0 +1,157 @@
+<?xpacket begin="﻿" id="W5M0MpCehiHzreSzNTczkc9d"?>
+<x:xmpmeta xmlns:x="adobe:ns:meta/" x:xmptk="XMP Core 4.4.0-Exiv2">
+ <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+  <rdf:Description rdf:about=""
+    xmlns:xmp="http://ns.adobe.com/xap/1.0/"
+    xmlns:acdsee="http://ns.acdsee.com/iptc/1.0/"
+    xmlns:digiKam="http://www.digikam.org/ns/1.0/"
+    xmlns:tiff="http://ns.adobe.com/tiff/1.0/"
+    xmlns:exif="http://ns.adobe.com/exif/1.0/"
+    xmlns:video="http://www.video/"
+    xmlns:MicrosoftPhoto="http://ns.microsoft.com/photo/1.0/"
+    xmlns:mwg-rs="http://www.metadataworkinggroup.com/schemas/regions/"
+    xmlns:stArea="http://ns.adobe.com/xmp/sType/Area#"
+    xmlns:MP="http://ns.microsoft.com/photo/1.2/"
+    xmlns:MPRI="http://ns.microsoft.com/photo/1.2/t/RegionInfo#"
+    xmlns:MPReg="http://ns.microsoft.com/photo/1.2/t/Region#"
+    xmlns:lr="http://ns.adobe.com/lightroom/1.0/"
+    xmlns:mediapro="http://ns.iview-multimedia.com/mediapro/1.0/"
+    xmlns:photoshop="http://ns.adobe.com/photoshop/1.0/"
+    xmlns:dc="http://purl.org/dc/elements/1.1/"
+    xmlns:Iptc4xmpCore="http://iptc.org/std/Iptc4xmpCore/1.0/xmlns/"
+   xmp:CreatorTool="iphoto2xmp.rb by Jens Benecke"
+   xmp:MetadataDate="<%= @date_meta %>"
+   xmp:Rating="<%= @rating %>"
+   xmp:ModifyDate="<%= @date %>"
+   xmp:CreateDate="<%= @date_master %>"
+   acdsee:rating="<%= @rating %>"
+   acdsee:caption="<%= @caption %>"
+   acdsee:notes="<%= @description %>"
+   digiKam:ImageUniqueID="<%= @uuid %>"
+   digiKam:PickLabel="<%= @hidden %>"
+   digiKam:ColorLabel="<%= @flagged %>"
+   exif:DateTimeOriginal="<%= @date_master %>"
+   exif:ExifVersion="0221"
+   exif:GPSLatitudeRef="N"
+   exif:GPSLongitudeRef="E"
+   exif:GPSVersionID="2.0.0.0"
+   video:DateTimeOriginal="<%= @date_master %>"
+   video:ModificationDate="<%= @date %>"
+<% if @latitude %>
+   exif:GPSLatitude="<%= @latitude %>"
+   exif:GPSLongitude="<%= @longitude %>"
+   exif:GPSMapDatum="WGS-84"
+   photoshop:City="<%= @gpscity %>"
+   photoshop:State="<%= @gpsstate %>"
+   photoshop:Country="<%= @gpscountryname %>"
+   Iptc4xmpCore:Location="<%= @gpslocation %>"
+   Iptc4xmpCore:CountryCode="<%= @gps3lettercountrycode %>"
+<% end %>
+  >
+
+<% if @caption %>
+   <dc:title>
+    <rdf:Alt>
+     <rdf:li xml:lang="x-default"><%= @caption %></rdf:li>
+    </rdf:Alt>
+   </dc:title>
+<% end %>
+
+<% unless @keylist.empty? %>
+   <digiKam:TagsList>
+    <rdf:Seq>
+     <% for keyword in @keylist %>
+      <rdf:li><%= keyword %></rdf:li>
+     <% end %>
+    </rdf:Seq>
+   </digiKam:TagsList>
+   <MicrosoftPhoto:LastKeywordXMP>
+    <rdf:Bag>
+     <% for keyword in @keylist %>
+      <rdf:li><%= keyword %></rdf:li>
+     <% end %>
+    </rdf:Bag>
+   </MicrosoftPhoto:LastKeywordXMP>
+   <lr:hierarchicalSubject>
+    <rdf:Bag>
+     <% for keyword in @keylist %>
+      <rdf:li><%= keyword %></rdf:li>
+     <% end %>
+    </rdf:Bag>
+   </lr:hierarchicalSubject>
+   <mediapro:CatalogSets>
+    <rdf:Bag>
+     <% for keyword in @keylist %>
+      <rdf:li><%= keyword %></rdf:li>
+     <% end %>
+    </rdf:Bag>
+   </mediapro:CatalogSets>
+   <dc:subject>
+    <rdf:Bag>
+     <% for keyword in @keylist %>
+      <rdf:li><%= keyword %></rdf:li>
+     <% end %>
+    </rdf:Bag>
+   </dc:subject>
+<% end %>
+
+<% if @description %>
+   <tiff:ImageDescription>
+    <rdf:Alt>
+     <rdf:li xml:lang="x-default"><%= @description %></rdf:li>
+    </rdf:Alt>
+   </tiff:ImageDescription>
+   <exif:UserComment>
+    <rdf:Alt>
+     <rdf:li xml:lang="x-default"><%= @description %></rdf:li>
+    </rdf:Alt>
+   </exif:UserComment>
+   <dc:description>
+    <rdf:Alt>
+     <rdf:li xml:lang="x-default"><%= @description %></rdf:li>
+    </rdf:Alt>
+   </dc:description>
+<% end %>
+
+<% if @orig_faces.is_a?(Array) and !@orig_faces.empty? %>
+   <mwg-rs:Regions rdf:parseType="Resource">
+    <mwg-rs:RegionList>
+     <rdf:Bag>
+      <% for face in @orig_faces %>
+       <rdf:li>
+        <rdf:Description mwg-rs:Name="<%= face['full_name'] %>" 
+                         mwg-rs:Email="<%= face['email'] %>" mwg-rs:Type="Face">
+         <mwg-rs:Area stArea:x="<%= face['topleftx'] %>" 
+                      stArea:y="<%= face['toplefty'] %>"
+                      stArea:w="<%= face['width'] %>"
+                      stArea:h="<%= face['height'] %>" stArea:unit="normalized" />
+        </rdf:Description>
+       </rdf:li>"
+      <% end %>
+     </rdf:Bag>
+    </mwg-rs:RegionList>
+   </mwg-rs:Regions>
+
+   <MP:RegionInfo rdf:parseType="Resource">
+    <MPRI:Regions>
+     <rdf:Bag>
+      <% for face in @orig_faces %>
+      <rdf:li
+       MPReg:Rectangle="<%= face['topleftx'] %>, <%= face['toplefty'] %>, <%= face['width'] %>, <%= face['height'] %>"
+       MPReg:PersonDisplayName="<%= face['full_name'] %>"/>
+      <% end %>
+     </rdf:Bag>
+    </MPRI:Regions>
+   </MP:RegionInfo>
+
+<% end %>
+
+   <dc:creator>
+    <rdf:Seq>
+     <rdf:li><%= @creator %></rdf:li>
+    </rdf:Seq>
+   </dc:creator>
+  </rdf:Description>
+ </rdf:RDF>
+</x:xmpmeta>
+<?xpacket end="w"?>
