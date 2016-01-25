@@ -69,6 +69,7 @@ Note: This is your chance to fork and create a pull request ;-)
 The script will additionally identify
  * orphaned images in your iPhoto Library (ie. images which are referenced nowhere) and
  * missing images (images which are in the database but have no associated file).
+
 and optionally copy orphaned images to the export root directory 
 
 

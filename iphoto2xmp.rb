@@ -41,6 +41,7 @@ require 'sqlite3'
 require 'time'              # required to convert integer timestamps
 require 'cfpropertylist'    # required to read binary plist blobs in SQLite3 dbs, 'plist' gem can't do this
 require 'erb'               # template engine
+require 'pp'                # to pretty print PList extractions
 
 EXIFTOOL = `which exiftool`.chop
 if EXIFTOOL == ''
@@ -136,7 +137,7 @@ masterhead, *masters = librarydb.execute2(
         ,m.isInTrash AS in_trash
         ,v.masterHeight AS master_height        -- Height of original image (master)
         ,v.masterWidth AS master_width          -- Width of original image (master)
-        ,v.processedHeight AS processed_width   -- Height of processed (eg. cropped, rotated) image
+        ,v.processedHeight AS processed_height  -- Height of processed (eg. cropped, rotated) image
         ,v.processedWidth AS processed_width    -- Width of processed (eg. cropped, rotated) image
    FROM RKVersion v
     LEFT JOIN RKFolder f ON v.projectUuid=f.uuid
@@ -211,8 +212,8 @@ masters.each do |photo|
   @date_master = parse_date(photo['datem'])
   puts "##{photo['id']}(##{photo['master_id']}): #{photo['caption']}, #{photo['uuid'][0..9]}…/#{photo['master_uuid'][0..9]}…, create: #{@date_master} / edit: #{@date}".bold
   puts "  Desc: #{photodescs[photo['id'].to_i]}"  if photodescs[photo['id'].to_i]
-  puts "  Orig: #{origpath}, exists? #{File.exist?("#{basedir}/#{origpath}")}"
-  puts "  Mod : #{modpath}, exists? #{File.exist?("#{basedir}/#{modpath}")}" if File.exist?("#{basedir}/#{modpath}")
+  puts "  Orig: #{photo["master_height"]}x#{photo["master_width"]}, #{origpath} (#{File.exist?("#{basedir}/#{origpath}")})"
+  puts "  Mod : #{photo["processed_height"]}x#{photo["processed_width"]}, #{modpath}, (#{File.exist?("#{basedir}/#{modpath}")})" if File.exist?("#{basedir}/#{modpath}")
 
   #
   # Build up objects with the metadata in using an ERB template. 
@@ -304,9 +305,9 @@ masters.each do |photo|
       check = false
       edit_plist_hash = CFPropertyList.native_types(CFPropertyList::List.new(data: edit['data']).value)
       # save raw PropertyList data in additional sidecar file for later analysis
-      j = File.open(modxmppath.gsub(/xmp/, "plist_#{edit['adj_name']}"), 'w')
-      j.puts(edit_plist_hash.inspect)
-      j.close
+      File.open(modxmppath.gsub(/xmp/, "plist_#{edit['adj_name']}"), 'w') do |j|
+        PP.pp(edit_plist_hash, j)
+      end
       
       case edit['adj_name'] 
         when "RKCropOperation"
@@ -314,9 +315,9 @@ masters.each do |photo|
           check = edit_plist_hash["$objects"][13] == "inputRotation"
           # eg. 1612, 2109, 67, 1941 - crop positions
           crop_startx = edit_plist_hash["$objects"][20]    # xstart: position from the left
-          crop_starty = edit_plist_hash["$objects"][24]    # ystart: position from the bottom!
+          crop_starty = edit_plist_hash["$objects"][23]    # ystart: position from the bottom!
           crop_width  = edit_plist_hash["$objects"][22]    # xsize:  size in pixels from xstart
-          crop_height = edit_plist_hash["$objects"][23]    # ysize:  size in pixels from ystart
+          crop_height = edit_plist_hash["$objects"][24]    # ysize:  size in pixels from ystart
           print "Crop (#{crop_startx}x#{crop_starty}+#{crop_width}+#{crop_height}), "
         when "RKStraightenCropOperation"
           # image was straightened and thus implicitly cropped, region metadata must be adjusted
@@ -347,24 +348,36 @@ masters.each do |photo|
     toplefty = "%.8f" % (1-face['topLeftY'].to_f)   # iPhoto counts Y dimension from the bottom, thus "1-y"
     width    = "%.8f" % ((face['bottomRightX'] - face['topLeftX']).abs)
     height   = "%.8f" % ((face['bottomRightY'] - face['topLeftY']).abs)
-    { 'topleftx' => topleftx, 'toplefty' => toplefty, 'width' => width, 'height' => height,
-      'full_name' => face['full_name'], 'email' => face['email'] }
+    centerx  = "%.8f" % (face['topLeftX'].to_f + width.to_f/2)
+    centery  = "%.8f" % (1-face['topLeftY'].to_f + height.to_f/2)
+    { 'topleftx' => topleftx, 'toplefty' => toplefty,
+      'centerx'  => centerx,  'centery' => centery, 'width' => width, 'height' => height,
+      'full_name' => face['full_name'] || "Unknown", 'email' => face['email'] }
   end
   @orig_faces.each {|f|
-    puts "  FaceOrig: #{f['topleftx']} x #{f['toplefty']} +#{f['width']} +#{f['height']};  #{f['full_name']}\t "
+    puts "  FaceOrig: #{f['topleftx']} / #{f['toplefty']} (#{f['centerx']} / #{f['centery']}) +#{f['width']} +#{f['height']};  #{f['full_name']}\t "
   }
 
+  # Cropped faces need converted rectangle data. We have
+  #  * topleftx/y (0..1) relative face location inside original image (0..1)
+  #  * crop_startx/y     absolute pixels, y from bottom(!)
+  #  * photo[processed_h/w] absolute pixels
+  #
   @crop_faces = []
   @crop_faces = faces.collect do |face|
-    topleftx = "%.8f" % ((face['topLeftX'] * photo['master_width'].to_i - crop_startx) / crop_width)
-    toplefty = "%.8f" % ((face['topLeftY'] * photo['master_height'].to_i - 1+crop_starty) / crop_height)
+    topleftx = "%.8f" % ((face['topLeftX'] * photo['master_width'].to_i - crop_startx) / crop_width)    # OK
+    toplefty = "%.8f" % (((1-face['topLeftY']) * photo['master_height'].to_i - (photo['master_height'].to_i-crop_height-crop_starty)) / crop_height)
     width    = "%.8f" % ((face['bottomRightX']-face['topLeftX']).abs * photo['master_width'].to_i / crop_width)
     height   = "%.8f" % ((face['bottomRightY']-face['topLeftY']).abs * photo['master_height'].to_i / crop_height)
-    { 'topleftx' => topleftx, 'toplefty' => toplefty, 'width' => width, 'height' => height,
-      'full_name' => face['full_name'], 'email' => face['email'] }
+    centerx  = "%.8f" % (face['topLeftX'].to_f + width.to_f/2)
+    centery  = "%.8f" % (1-face['topLeftY'].to_f + height.to_f/2)
+    puts "  FaceCrop: topLeftX/Y=#{face['topLeftX']}/#{face['topLeftY'].to_f}, master_w/h=#{photo['master_width']}/#{photo['master_height']}, crop_startx/y=#{crop_startx}/#{photo['master_height'].to_i-crop_starty}, crop_w/h=#{crop_width}/#{crop_height}"
+    { 'topleftx' => topleftx, 'toplefty' => toplefty,
+      'centerx'  => centerx,  'centery' => centery, 'width' => width, 'height' => height,
+      'full_name' => face['full_name'] || "Unknown", 'email' => face['email'] }
   end if crop_startx > 0
   @crop_faces.each {|f|
-    puts "  FaceCrop: #{f['topleftx']} x #{f['toplefty']} +#{f['width']} +#{f['height']};  #{f['full_name']}\t "
+    puts "  FaceCrop: #{f['topleftx']} / #{f['toplefty']} (#{f['centerx']} / #{f['centery']}) +#{f['width']} +#{f['height']};  #{f['full_name']}\t "
   }
 
   # TODO: additionally specify modified image as second version of original file in XMP (DerivedFrom?)

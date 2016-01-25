@@ -117,17 +117,20 @@
    <mwg-rs:Regions rdf:parseType="Resource">
     <mwg-rs:RegionList>
      <rdf:Bag>
-      <% for face in @orig_faces %>
+<% for face in @orig_faces %>
        <rdf:li>
-        <rdf:Description mwg-rs:Name="<%= face['full_name'] %>" 
-                         mwg-rs:Email="<%= face['email'] %>" mwg-rs:Type="Face">
-         <mwg-rs:Area stArea:x="<%= face['topleftx'] %>" 
-                      stArea:y="<%= face['toplefty'] %>"
-                      stArea:w="<%= face['width'] %>"
-                      stArea:h="<%= face['height'] %>" stArea:unit="normalized" />
+        <rdf:Description
+         mwg-rs:Name="<%= face['full_name'] %>" 
+         mwg-rs:Type="Face">
+         <mwg-rs:Area
+          stArea:x="<%= face['centerx'] %>" 
+          stArea:y="<%= face['centery'] %>"
+          stArea:w="<%= face['width'] %>"
+          stArea:h="<%= face['height'] %>"
+          stArea:unit="normalized"/>
         </rdf:Description>
-       </rdf:li>"
-      <% end %>
+       </rdf:li>
+<% end %>
      </rdf:Bag>
     </mwg-rs:RegionList>
    </mwg-rs:Regions>
@@ -135,15 +138,14 @@
    <MP:RegionInfo rdf:parseType="Resource">
     <MPRI:Regions>
      <rdf:Bag>
-      <% for face in @orig_faces %>
+<% for face in @orig_faces %>
       <rdf:li
        MPReg:Rectangle="<%= face['topleftx'] %>, <%= face['toplefty'] %>, <%= face['width'] %>, <%= face['height'] %>"
        MPReg:PersonDisplayName="<%= face['full_name'] %>"/>
-      <% end %>
+<% end %>
      </rdf:Bag>
     </MPRI:Regions>
    </MP:RegionInfo>
-
 <% end %>
 
    <dc:creator>
@@ -155,3 +157,4 @@
  </rdf:RDF>
 </x:xmpmeta>
 <?xpacket end="w"?>
+
