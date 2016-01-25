@@ -41,10 +41,20 @@
    exif:GPSLatitude="<%= @latitude %>"
    exif:GPSLongitude="<%= @longitude %>"
    exif:GPSMapDatum="WGS-84"
+<% end %>
+<% if @gpscity %>
    photoshop:City="<%= @gpscity %>"
+<% end %>
+<% if @gpsstate %>
    photoshop:State="<%= @gpsstate %>"
+<% end %>
+<% if @gpscountryname %>
    photoshop:Country="<%= @gpscountryname %>"
+<% end %>
+<% if @gpslocation %>
    Iptc4xmpCore:Location="<%= @gpslocation %>"
+<% end %>
+<% if @gps3lettercountrycode %>
    Iptc4xmpCore:CountryCode="<%= @gps3lettercountrycode %>"
 <% end %>
   >
@@ -120,10 +130,10 @@
 <% for face in @orig_faces %>
        <rdf:li>
         <rdf:Description
-         mwg-rs:Name="<%= face['full_name'] %>" 
+         mwg-rs:Name="<%= face['full_name'] %>"
          mwg-rs:Type="Face">
          <mwg-rs:Area
-          stArea:x="<%= face['centerx'] %>" 
+          stArea:x="<%= face['centerx'] %>"
           stArea:y="<%= face['centery'] %>"
           stArea:w="<%= face['width'] %>"
           stArea:h="<%= face['height'] %>"

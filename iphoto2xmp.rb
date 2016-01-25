@@ -139,6 +139,8 @@ masterhead, *masters = librarydb.execute2(
         ,v.masterWidth AS master_width          -- Width of original image (master)
         ,v.processedHeight AS processed_height  -- Height of processed (eg. cropped, rotated) image
         ,v.processedWidth AS processed_width    -- Width of processed (eg. cropped, rotated) image
+
+        ,v.overridePlaceId AS place_id          -- modelId of Properties::RKPlace
    FROM RKVersion v
     LEFT JOIN RKFolder f ON v.projectUuid=f.uuid
     LEFT JOIN RKMaster m ON m.uuid = v.masterUuid
@@ -155,7 +157,8 @@ placehead, *places = propertydb.execute2("SELECT
   p.modelId, p.uuid, p.defaultName, p.minLatitude, p.minLongitude, p.maxLatitude, p.maxLongitude, p.centroid, p.userDefined 
   FROM RKPlace p");
 # placehead, *places = propertydb.execute2("SELECT p.modelId, p.uuid, p.defaultName, p.minLatitude, p.minLongitude, p.maxLatitude, p.maxLongitude, p.centroid, p.userDefined, n.language, n.description FROM RKPlace p INNER JOIN RKPlaceName n ON p.modelId=n.placeId");
-print "Properties #{places.count}; "
+placelist = places.inject({}) {|h,place| h[place['modelId']] = place; h }
+print "Properties (#{places.count} places; "
 
 # Get description text of all photos.
 deschead, *descs = propertydb.execute2("SELECT
@@ -173,6 +176,7 @@ puts "Faces)."
 
 #puts "descs = #{descs.inspect}"
 #puts "photodescs = #{photodescs.inspect}"
+#puts "placelist = #{placelist.inspect}"
 
 
 #
@@ -238,11 +242,13 @@ masters.each do |photo|
   #       (user boundaryData?)
   @longitude = photo['longitude']
   @latitude  = photo['latitude']
-  @gpscity = ''
-  @gpsstate = ''
-  @gpscountryname = ''
-  @gpslocation = ''
-  @gps3lettercountrycode = ''
+  if p = placelist[photo['place_id']]
+    @gpscity = ''
+    @gpsstate = ''
+    @gpscountryname = ''
+    @gpslocation = p['defaultName']
+    @gps3lettercountrycode = ''
+  end
 
 
   # Get keywords. Convert iPhoto specific flags as keywords too.
