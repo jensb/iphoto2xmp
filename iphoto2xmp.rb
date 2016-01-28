@@ -115,13 +115,13 @@ masterhead, *masters = librarydb.execute2(
         ,f.name AS rollname
         ,f.modelId AS roll
         ,v.uuid AS uuid
-        ,m.uuid AS master_uuid
+        ,m.uuid AS master_uuid        -- master (unedited) image. Required for face rectangle conversion.
         ,v.versionNumber AS version_number  -- 1 if edited image, 0 if original image
-        ,v.masterUuid AS master_uuid  -- master (unedited) image. Required for face rectangle conversion.
+     -- ,v.masterUuid AS master_uuid  -- master (unedited) image. Required for face rectangle conversion.
         ,v.mainRating AS rating       -- TODO: Rating is always applied to the master image, not the edited one
         ,m.type AS mediatype          -- IMGT, VIDT
-        ,m.imagePath AS imagepath     -- 2015/04/27/20150427-123456/FOO.RW2, ergibt Masters/$imagepath und
-                                        -- Previews/dirname($imagepath)/$uuid/basename($imagepath)
+        ,m.imagePath AS imagepath     -- 2015/04/27/20150427-123456/FOO.RW2, yields Masters/$imagepath and
+                                      -- Previews/dirname($imagepath)/$uuid/basename($imagepath)
         ,v.imageDate AS date          -- for edited or rotated or converted images, this contains DateTimeModified!
         ,m.imageDate AS datem         --
         ,m.fileCreationDate AS datem_creation
@@ -212,11 +212,25 @@ masters.each do |photo|
     modxmppath  = link_photo(basedir, outdir, photo, modpath, origpath) 
   end
 
+  # FIXME: Fix size of RW2 files (incorrectly set to 3776x2520, but Digikam sees 3792x2538) (Panasonic LX3)
+  # TODO: Get real size of RW2 files (dcraw -i -v $FILE | grep "Image Size" | ...) and use that
+  if photo["imagepath"] =~ /RW2$/ and photo["master_height"].to_i == 2520
+    photo["raw_factor_h"] = 2538.0 / photo["master_height"].to_f   # for converting face positions
+    photo["raw_factor_w"] = 3792.0 / photo["master_width"].to_f
+    #photo["raw_factor_h"] = 1.01
+    #photo["raw_factor_w"] = 1.01
+    photo["master_height"] = 2538    # incorrect. iPhoto always uses its own internal (wrong) sizes for crop calculations
+    photo["master_width"] = 3792
+  else
+    photo["raw_factor_h"] = 1               # Dummy
+    photo["raw_factor_w"] = 1
+  end
+
   @date = parse_date(photo['date'])
   @date_master = parse_date(photo['datem'])
   puts "##{photo['id']}(##{photo['master_id']}): #{photo['caption']}, #{photo['uuid'][0..9]}…/#{photo['master_uuid'][0..9]}…, create: #{@date_master} / edit: #{@date}".bold
   puts "  Desc: #{photodescs[photo['id'].to_i]}"  if photodescs[photo['id'].to_i]
-  puts "  Orig: #{photo["master_height"]}x#{photo["master_width"]}, #{origpath} (#{File.exist?("#{basedir}/#{origpath}")})"
+  puts "  Orig: #{photo["master_height"]}x#{photo["master_width"]} (#{photo["raw_factor_h"]}/#{photo["raw_factor_w"]}), #{origpath} (#{File.exist?("#{basedir}/#{origpath}")})"
   puts "  Mod : #{photo["processed_height"]}x#{photo["processed_width"]}, #{modpath}, (#{File.exist?("#{basedir}/#{modpath}")})" if File.exist?("#{basedir}/#{modpath}")
 
   #
@@ -229,7 +243,8 @@ masters.each do |photo|
   # Apply it to both images if found in edited image.
   #@title = photo['title']
   @caption = photo['caption']
-  @uuid = photo['version_number'].to_i > 0 ? photo['uuid'] : photo['master_uuid']   # avoid duplicate uuids
+  #@uuid = photo['version_number'].to_i > 0 ? photo['uuid'] : photo['master_uuid']   # avoid duplicate uuids
+  @uuid = photo['master_uuid']    # will be changed further down for version > 1
   @description = photodescs[photo['id'].to_i]
 
   # Rating is always applied to the edited image (not the master). Apply to both!
@@ -282,7 +297,7 @@ masters.each do |photo|
 
   # Link: Faces.apdb::RKDetectedFace::masterUuid == Library.apdb::RKMaster::uuid
   facehead, *faces = facedb.execute2(
-    "SELECT d.modelId               -- primary key
+    "SELECT d.modelId             -- primary key
          ,d.uuid AS detect_uuid   -- primary key
          ,d.masterUuid            -- --> Library::RKMaster::uuid
          ,d.faceKey               -- --> RKFaceName::faceKey
@@ -364,6 +379,22 @@ masters.each do |photo|
     puts "  FaceOrig: #{f['topleftx']} / #{f['toplefty']} (#{f['centerx']} / #{f['centery']}) +#{f['width']} +#{f['height']};  #{f['full_name']}\t "
   }
 
+  # RW2 files have no definite resolution (res in iPhoto is buggy / wrong) so they need extra treatment.
+  @rw2_faces = faces.collect do |face|
+    topleftx = "%.8f" % (face['topLeftX'].to_f * photo['raw_factor_w'].to_f)
+    toplefty = "%.8f" % ((1-face['topLeftY'].to_f) * photo['raw_factor_h'].to_f)   # iPhoto counts Y dimension from the bottom, thus "1-y"
+    width    = "%.8f" % ((face['bottomRightX'] - face['topLeftX']).abs * photo['raw_factor_w'].to_f)
+    height   = "%.8f" % ((face['bottomRightY'] - face['topLeftY']).abs * photo['raw_factor_h'].to_f)
+    centerx  = "%.8f" % ((face['topLeftX'].to_f * photo['raw_factor_w'].to_f) + width.to_f/2)
+    centery  = "%.8f" % ((1-face['topLeftY'].to_f) * photo['raw_factor_h'].to_f + height.to_f/2)
+    { 'topleftx' => topleftx, 'toplefty' => toplefty,
+      'centerx'  => centerx,  'centery' => centery, 'width' => width, 'height' => height,
+      'full_name' => face['full_name'] || "Unknown", 'email' => face['email'] }
+  end
+  @rw2_faces.each {|f|
+    puts "  Face_RW2: #{f['topleftx']} / #{f['toplefty']} (#{f['centerx']} / #{f['centery']}) +#{f['width']} +#{f['height']};  #{f['full_name']}\t "
+  }
+
   # Cropped faces need converted rectangle data. We have
   #  * topleftx/y (0..1) relative face location inside original image (0..1)
   #  * crop_startx/y     absolute pixels, y from bottom(!)
@@ -388,13 +419,15 @@ masters.each do |photo|
 
   # TODO: additionally specify modified image as second version of original file in XMP (DerivedFrom?)
   unless(File.exist?(origxmppath))
+    @faces = photo["imagepath"] =~ /RW2$/ ? @rw2_faces : @orig_faces
     j = File.open(origxmppath, 'w')
     j.puts(ERB.new(xmp, 0, ">").result)
     j.close
     done_xmp[origxmppath] = true
   end
   if photo['version_number'].to_i == 1 and modxmppath and !File.exist?(modxmppath)
-    @orig_faces = @crop_faces if crop_startx > 0
+    @faces = crop_startx > 0 ? @crop_faces : @orig_faces
+    @uuid = photo['uuid']             # for this image, use modified image's uuid
     j = File.open(modxmppath,  'w')
     j.puts(ERB.new(xmp_mod, 0, ">").result)
     j.close
