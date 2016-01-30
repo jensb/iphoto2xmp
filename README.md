@@ -81,6 +81,9 @@ iPhoto does not use hierarchical keywords, but some users might have created a p
 I plan to document the iPhoto Library structure in this repository when I have the time. Meanwhile, look at the source code comments.
 
 
+## License
+The license of this script is GPL2 as of now. If this causes problems with your intended usage please contact me.
+
 ## Contact
 Contact me at jens-github@spamfreemail.de or via Github.
 
