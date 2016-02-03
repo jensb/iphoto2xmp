@@ -118,18 +118,45 @@ def calc_faces(faces, mwidth, mheight, raw_factor_x=1, raw_factor_y=1, crop_star
     height   = "%.8f" % ((face['bottomRightY']-face['topLeftY']).abs * raw_factor_y * mheight / crop_height)
     centerx  = "%.8f" % (face['topLeftX'].to_f * raw_factor_x + width.to_f/2)
     centery  = "%.8f" % (1-face['topLeftY'].to_f * raw_factor_y + height.to_f/2)
-    if crop_startx>0 or crop_starty>0 or crop_width != mwidth or crop_height != mheight
-      puts "  FaceCrop: topLeftX/Y=#{face['topLeftX']}/#{face['topLeftY'].to_f}, master_w/h=#{mwidth}/#{mheight}, crop_startx/y=#{crop_startx}/#{mheight-crop_starty}, crop_w/h=#{crop_width}/#{crop_height}"
-    end
+    #if crop_startx>0 or crop_starty>0 or crop_width != mwidth or crop_height != mheight
+    #  puts "  FaceCrop: topLeftX/Y=#{face['topLeftX']}/#{face['topLeftY'].to_f}, master_w/h=#{mwidth}/#{mheight}, crop_startx/y=#{crop_startx}/#{mheight-crop_starty}, crop_w/h=#{crop_width}/#{crop_height}"
+    #end
     { 'topleftx' => topleftx, 'toplefty' => toplefty,
       'centerx'  => centerx,  'centery' => centery, 'width' => width, 'height' => height,
-      'full_name' => face['full_name'] || "Unknown", 'email' => face['email'] }
+      'name' => face['name'] || "Unknown", 'email' => face['email'] }
   end
-  str = (raw_factor_x != 1)  ?  "FaceRaw " : (crop_startx != 0 ? "FaceCrop" : "FaceOrig")
+  str = if raw_factor_x != 1
+    "FaceRaw "
+  else
+    if crop_startx != 0; "FaceCrop" else "FaceOrig" end
+  end
   res.each {|f|
-    puts "  #{str}: #{f['topleftx']} / #{f['toplefty']} (#{f['centerx']} / #{f['centery']}) +#{f['width']} +#{f['height']};  #{f['full_name']}\t "
+    puts "  #{str}: #{f['topleftx']} / #{f['toplefty']} (#{f['centerx']} / #{f['centery']}) +#{f['width']} +#{f['height']};  #{f['name']}\t "
   }
   res
+end
+
+
+# TODO: Rotate and zoom face x/y values
+def crop_rotate_faces(mwidth, mheight, faces, crop_rotation_factor)
+  rotfaces = faces.collect {|face|
+    # 1. Convert so that center of picture is zero x/y.
+    # 2. Rotate and zoom.
+    # 3. Convert back.
+    # 4. Zoom so that rotated image fills original rectangle.
+  }
+  faces     # temporary.
+end
+
+# Rotate a point around the coordinate center (0,0).
+def rotate_point(x, y, origx, origy, degrees)
+  rad = Math::PI/180 * degrees
+  x2 = x - origx
+  y2 = y - origy
+  cos = Math.cos(rad)
+  sin = Math.sin(rad)
+  zoom = zoom_point()
+  [x2*cos - y2*sin + origx, x2*sin + y2*cos + origy]
 end
 
 
@@ -335,14 +362,16 @@ masters.each do |photo|
            ,a.data as data
      FROM RKImageAdjustment a
     WHERE a.versionUuid='#{photo['uuid']}'")
+
   # TODO: Save iPhoto/iOS edit operations in XMP structure (digiKam:history?)
+  # TODO: Use History.apdb::RKImageAdjustmentChange table to fill edit operations.
  
 
   # If photo was edited, check if dimensions were changed (crop, rotate, iOS edit)
   # since this would require recalculation of the face rectangle locations.
   # Unfortunately, the crop info is saved in a PropertyList blob within the 'data' column of the DB.
   # Can it be more cryptic please? Who designs this crap anyway?
-  crop_startx = crop_starty = crop_width = crop_height = 0
+  crop_startx = crop_starty = crop_width = crop_height = crop_rotation_factor = 0
   if photo['version_number'].to_i > 0
     print "  Edit: " #{edits.collect{|e| e['adj_name'] }.join(",").gsub(/RK|Operation/, '')}"
     edits.each do |edit|
@@ -367,8 +396,8 @@ masters.each do |photo|
           # image was straightened and thus implicitly cropped, region metadata must be adjusted
           # TODO: calculate region shift from rotational angle.
           check = edit_plist_hash["$objects"][9] == "inputRotation"
-          # factor examples: 1.04125 ~ 1.0° ; 21.142332 ~ 5.2° ; 19.0507 ~ -19,1°
-          crop_rotation_factor = edit_plist_hash["$objects"][10]    # inputRotation
+          # factor examples: 1.04125 ~ 1.0° ; -19.0507 ~ -19,1°
+          crop_rotation_factor = edit_plist_hash["$objects"][10]    # inputRotation in ° (degrees of 360°)
           print "StraightenCrop (#{crop_rotation_factor}), "
         when "DGiOSEditsoperation"
           # TODO: image was edited in iOS which creates its own XMP file (with proprietary aas and crs tags).
@@ -402,8 +431,8 @@ masters.each do |photo|
          ,d.rejected
          ,d.ignore
          ,n.uuid AS name_uuid
-         ,n.name AS name
-         ,n.fullName AS full_name
+         ,n.name AS name          -- more reliable, also seems to contain manually added names
+         ,n.fullName AS full_name -- might be empty if person is not listed in user's address book
          ,n.email AS email
       FROM RKDetectedFace d
       LEFT JOIN RKFaceName n ON n.faceKey=d.faceKey
@@ -417,6 +446,11 @@ masters.each do |photo|
   @orig_faces = calc_faces(faces, width, height)
   @rw2_faces  = calc_faces(faces, width, height, photo['raw_factor_w'] || 1, photo['raw_factor_h'] || 1)
   @crop_faces = calc_faces(faces, width, height, 1, 1, crop_startx, crop_starty, crop_width, crop_height)
+
+  # Only valid for modified faces
+  if crop_rotation_factor != 0
+    @crop_faces = crop_rotate_faces(width, height, @orig_faces, crop_rotation_factor)
+  end
 
 
   # TODO: additionally specify modified image as second version of original file in XMP (DerivedFrom?)
