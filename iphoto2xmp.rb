@@ -77,9 +77,15 @@ def link_photo(basedir, outdir, photo, imgfile, origfile)
     destpath.sub!(/\.([^.]*)$/, '_v1.\1')
   end
   File.directory?(destdir) || FileUtils.mkpath(destdir)
-  if File.exist?(imgpath)
+  if File.exist?(imgpath)     # duplicate file names in one Event are allowed in iPhoto
     $known[imgpath] = true
-    File.exist?(destpath)  ||  FileUtils.ln(imgpath, destpath)
+    ver = 2
+    while File.exist?(destpath)
+      destpath.sub!(/(_v[0-9]+)?\.([^.]*)$/, "_v#{ver}.\\2")
+      #puts "  ... adding extension to #{destpath}"
+      ver += 1
+    end
+    FileUtils.ln(imgpath, destpath)
   else
     $missing.puts(imgpath)
     $problems = true
