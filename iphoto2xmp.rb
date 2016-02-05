@@ -121,16 +121,13 @@ def calc_faces(faces, mwidth, mheight, raw_factor_x=1, raw_factor_y=1, crop_star
     #if crop_startx>0 or crop_starty>0 or crop_width != mwidth or crop_height != mheight
     #  puts "  FaceCrop: topLeftX/Y=#{face['topLeftX']}/#{face['topLeftY'].to_f}, master_w/h=#{mwidth}/#{mheight}, crop_startx/y=#{crop_startx}/#{mheight-crop_starty}, crop_w/h=#{crop_width}/#{crop_height}"
     #end
-    { 'topleftx' => topleftx, 'toplefty' => toplefty,
+    { 'mode' => raw_factor_x==1 ? face['mode'] : "FaceRaw ",
+      'topleftx' => topleftx, 'toplefty' => toplefty,
       'centerx'  => centerx,  'centery' => centery, 'width' => width, 'height' => height,
       'name' => face['name'] || "Unknown", 'email' => face['email'] }
   end
-  str = if raw_factor_x != 1
-    "FaceRaw "
-  else
-    if crop_startx != 0; "FaceCrop" else "FaceOrig" end
-  end
   res.each {|f|
+    str = f['mode'] || "FaceOrig"
     puts "  #{str}: #{f['topleftx']} / #{f['toplefty']} (#{f['centerx']} / #{f['centery']}) +#{f['width']} +#{f['height']};  #{f['name']}\t "
   }
   res
@@ -235,11 +232,16 @@ print "Description #{descs.count}; "
 
 facedb = SQLite3::Database.new("#{iphotodir}/Database/apdb/Faces.db")
 facedb.results_as_hash = true
-puts "Faces)."
+
+# Get list of names to associate with modified face rectangle list (which does not contain this info).
+fnamehead, *fnames = facedb.execute2("SELECT modelId ,uuid ,faceKey ,name ,email FROM RKFaceName")
+fnamelist = fnames.inject({}) {|h,fname| h[fname['faceKey'].to_i] = fname; h }
+puts "Faces #{fnamelist.size})."
 
 #puts "descs = #{descs.inspect}"
 #puts "photodescs = #{photodescs.inspect}"
 #puts "placelist = #{placelist.inspect}"
+#puts "fnamelist_keys = #{fnamelist.keys.sort.inspect}"
 
 
 #
@@ -437,20 +439,40 @@ masters.each do |photo|
       FROM RKDetectedFace d
       LEFT JOIN RKFaceName n ON n.faceKey=d.faceKey
       WHERE d.masterUuid='#{photo['master_uuid']}'
-      ORDER BY d.modelId");  # LEFT JOIN because we also want unknown faces
+      ORDER BY d.modelId")  # LEFT JOIN because we also want unknown faces
 
+
+  # Get face rectangles from modified images (cropped, rotated, etc). No need to calculate those manually.
+  # This might be empty, in that case use list of unmodified faces.
+  modfacehead, *modfaces = librarydb.execute2(
+    "SELECT d.modelId        AS id
+           ,d.versionId      AS version_id
+           ,d.masterId       AS master_id
+           ,d.faceKey        AS face_key
+           ,d.faceRectLeft   AS topLeftX      -- use same naming scheme as in 'faces'
+           ,d.faceRectTop    AS bottomRightY
+           ,d.faceRectWidth + d.faceRectLeft  AS bottomRightX
+           ,d.faceRectTop+d.faceRectHeight    AS topLeftY
+     FROM RKVersionFaceContent d
+     WHERE d.versionId = '#{photo['id']}'
+     ORDER BY d.versionId")
+#  puts "  ... modfaces = #{modfaces.collect {|f| f["face_key"] }.sort}"
+#  puts "  ... modfaces = #{modfaces}"
+  modfaces_ = modfaces.collect { |v|
+     v.update({"mode" => "FaceEdit",
+               "name" => (fnamelist[modfaces[k]["face_key"].to_i]["name"] rescue "Unknown"),
+              "email" => (fnamelist[modfaces[k]["face_key"].to_i]["email"] rescue "")})
+     #modfaces[k]["name"] = fnamelist[modfaces[k]["face_key"].to_i]["name"] rescue "Unknown"
+     #modfaces[k]["email"] = fnamelist[modfaces[k]["face_key"].to_i]["email"] rescue ""
+  }
+#  puts "  ... modfaces_ = #{modfaces_.inspect}"
 
   # calc_faces(faces, width, height, raw_factor_x=1, raw_factor_y=1, crop_startx=0, crop_starty=0, crop_width=nil, crop_height=nil)
   width = photo['master_width'].to_i
   height = photo['master_height'].to_i
   @orig_faces = calc_faces(faces, width, height)
   @rw2_faces  = calc_faces(faces, width, height, photo['raw_factor_w'] || 1, photo['raw_factor_h'] || 1)
-  @crop_faces = calc_faces(faces, width, height, 1, 1, crop_startx, crop_starty, crop_width, crop_height)
-
-  # Only valid for modified faces
-  if crop_rotation_factor != 0
-    @crop_faces = crop_rotate_faces(width, height, @orig_faces, crop_rotation_factor)
-  end
+  @crop_faces = calc_faces(modfaces, width, height)
 
 
   # TODO: additionally specify modified image as second version of original file in XMP (DerivedFrom?)
@@ -462,7 +484,7 @@ masters.each do |photo|
     done_xmp[origxmppath] = true
   end
   if photo['version_number'].to_i == 1 and modxmppath and !File.exist?(modxmppath)
-    @faces = crop_startx > 0 ? @crop_faces : @orig_faces
+    @faces = @crop_faces.empty? ? @orig_faces : @crop_faces
     @uuid = photo['uuid']             # for this image, use modified image's uuid
     j = File.open(modxmppath,  'w')
     j.puts(ERB.new(xmp_mod, 0, ">").result)

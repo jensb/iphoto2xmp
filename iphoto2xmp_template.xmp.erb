@@ -132,7 +132,7 @@
 <% for face in @faces %>
        <rdf:li>
         <rdf:Description
-         mwg-rs:Name="<%= face['full_name'] %>"
+         mwg-rs:Name="<%= face['name'] %>"
          mwg-rs:Type="Face">
          <mwg-rs:Area
           stArea:x="<%= face['centerx'] %>"
@@ -154,7 +154,7 @@
 <% for face in @faces %>
       <rdf:li
        MPReg:Rectangle="<%= face['topleftx'] %>, <%= face['toplefty'] %>, <%= face['width'] %>, <%= face['height'] %>"
-       MPReg:PersonDisplayName="<%= face['full_name'] %>"/>
+       MPReg:PersonDisplayName="<%= face['name'] %>"/>
 <% end %>
      </rdf:Bag>
     </MPRI:Regions>
