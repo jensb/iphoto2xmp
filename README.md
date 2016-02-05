@@ -44,8 +44,10 @@ The script can currently export the following metadata:
  * Keywords (iPhoto does not use hierarchical keywords)
  * Event names (used for the folder structure, not exported into XMP)
  * GPS coordinates
+ * GPS coordinate names (Country, City, etc.). These are in Properties.apdb::RKPlace, RKPlaceName
  * Edited and original images, edit operation (eg. "Crop", "WhiteBalance", ...)
- * Faces and face coordinates (still buggy for cropped images, see below)
+ * Face names and face coordinates
+ * Face names and face coordinates in rotated or cropped images
  * Hidden, Starred, Flagged, Editable, Original, isInTrash flags (as keywords)
  * iPhoto and iOS edit operations as additional *.plist sidecar files (so far, not all are decoded)
 
@@ -55,13 +57,11 @@ The script *should* (at some point) also do the following.
 Note: This is your chance to fork and create a pull request ;-)
 
  * export iPhoto (before 9.1(?)) Event notes (TODO: where to?). These are in Library.apdb::RKNote SQLite table.
- * export GPS coordinate names (Country, City, etc.). These are in Properties.apdb::RKPlace, RKPlaceName
  * use XMP DerivedFrom to automatically group "Original" and "Modified" photos.
  * export Albums as "Album/XXX" keyword collections
  * export Smart Album rules into a separate text file so they can be recreated in the target application
  * export iPhoto's Slideshows, Calendars, Cards, Books at least as keyword collections (to identify which photos were used).
  * export an image's edit history at least as a descriptive text, perhaps as XMP (e.g. digikam:history tag)
- * correctly identify and tag face rectangles in rotated or cropped images
  * correctly identify iOS Edit operations (which create their own proprietary XMP sidecar file)
 
 
