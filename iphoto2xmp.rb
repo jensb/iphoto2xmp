@@ -100,6 +100,7 @@ end
 # iPhoto internally stores times as integer values starting count at 2001-01-01. 
 # Correct to be able to use parsed date values.
 # Returns "YYYY-MM-DDTHH:MM:SS+NNNN" RFC 3339 string for XMP file.
+# TODO: read time zone from iPhoto database and do not assume GMT+1.
 def parse_date(intdate)
   return "" unless intdate
   diff = Time.parse('2001-01-01 +0100')
@@ -107,17 +108,40 @@ def parse_date(intdate)
 end
 
 
-# Calculate face position depending on crop/rotation status and file type (special treatment for RW2).
-def calc_faces(faces, mwidth, mheight, raw_factor_x=1, raw_factor_y=1, crop_startx=0, crop_starty=0, crop_width=nil, crop_height=nil)
-  crop_width ||= mwidth
-  crop_height ||= mheight
+# Calculate face position depending on rotation status and file type (special treatment for RW2).
+# Remember that iPhoto "y" values are counted from the *bottom*, like in mathematics! ("x" are from the left as usual.)
+def calc_faces(faces, mwidth, mheight, frot=0, raw_factor_x=1, raw_factor_y=1)
   res = faces.collect do |face|
-    topleftx = "%.8f" % ((face['topLeftX'] * raw_factor_x * mwidth - crop_startx) / crop_width)    # OK
-    toplefty = "%.8f" % (((1-face['topLeftY']) * raw_factor_y * mheight - (mheight - crop_height - crop_starty)) / crop_height)
-    width    = "%.8f" % ((face['bottomRightX']-face['topLeftX']).abs * raw_factor_x * mwidth / crop_width)
-    height   = "%.8f" % ((face['bottomRightY']-face['topLeftY']).abs * raw_factor_y * mheight / crop_height)
-    centerx  = "%.8f" % (face['topLeftX'].to_f * raw_factor_x + width.to_f/2)
-    centery  = "%.8f" % (1-face['topLeftY'].to_f * raw_factor_y + height.to_f/2)
+    topleftx = "%.8f" % (raw_factor_x * case frot
+                                         when 0 then    face['topLeftX']
+                                         when 90 then   face['bottomRightY']
+                                         when 180 then  1 - face['bottomRightX']
+                                         when 270 then  1 - face['topLeftY']
+                                       end)
+
+    toplefty = "%.8f" % (raw_factor_y * case frot
+                                         when 0 then   1 - face['topLeftY']
+                                         when 90 then  1 - face['topLeftX']
+                                         when 180 then 1 - face['bottomRightY']
+                                         when 270 then face['bottomRightX']
+                                       end)
+
+    width    = "%.8f" % (raw_factor_x * case frot
+                                         when 0 then   face['bottomRightX'] - face['topLeftX']
+                                         when 90 then  face['topLeftY'] - face['bottomRightY']
+                                         when 180 then face['bottomRightX'] - face['topLeftX']
+                                         when 270 then face['topLeftY'] - face['bottomRightY']
+                                       end)
+
+    height   = "%.8f" % (raw_factor_y * case frot
+                                         when 0 then   face['topLeftY'] - face['bottomRightY']
+                                         when 90 then  face['bottomRightX'] - face['topLeftX']
+                                         when 180 then face['topLeftY'] - face['bottomRightY']
+                                         when 270 then face['bottomRightX'] - face['topLeftX']
+                                       end)
+
+    centerx  = "%.8f" % (topleftx.to_f * raw_factor_x + width.to_f/2)
+    centery  = "%.8f" % (toplefty.to_f * raw_factor_y + height.to_f/2)
     #if crop_startx>0 or crop_starty>0 or crop_width != mwidth or crop_height != mheight
     #  puts "  FaceCrop: topLeftX/Y=#{face['topLeftX']}/#{face['topLeftY'].to_f}, master_w/h=#{mwidth}/#{mheight}, crop_startx/y=#{crop_startx}/#{mheight-crop_starty}, crop_w/h=#{crop_width}/#{crop_height}"
     #end
@@ -460,19 +484,20 @@ masters.each do |photo|
 #  puts "  ... modfaces = #{modfaces}"
   modfaces_ = modfaces.collect { |v|
      v.update({"mode" => "FaceEdit",
-               "name" => (fnamelist[modfaces[k]["face_key"].to_i]["name"] rescue "Unknown"),
-              "email" => (fnamelist[modfaces[k]["face_key"].to_i]["email"] rescue "")})
+               "name" => (fnamelist[v["face_key"].to_i]["name"] rescue "Unknown"),
+              "email" => (fnamelist[v["face_key"].to_i]["email"] rescue "")})
      #modfaces[k]["name"] = fnamelist[modfaces[k]["face_key"].to_i]["name"] rescue "Unknown"
      #modfaces[k]["email"] = fnamelist[modfaces[k]["face_key"].to_i]["email"] rescue ""
   }
+#  puts "  ... fnamelist = #{fnamelist.inspect}"
 #  puts "  ... modfaces_ = #{modfaces_.inspect}"
 
-  # calc_faces(faces, width, height, raw_factor_x=1, raw_factor_y=1, crop_startx=0, crop_starty=0, crop_width=nil, crop_height=nil)
+  # calc_faces(faces, width, height, rotation, raw_factor_x=1, raw_factor_y=1, crop_startx=0, crop_starty=0, crop_width=nil, crop_height=nil)
   width = photo['master_width'].to_i
   height = photo['master_height'].to_i
-  @orig_faces = calc_faces(faces, width, height)
-  @rw2_faces  = calc_faces(faces, width, height, photo['raw_factor_w'] || 1, photo['raw_factor_h'] || 1)
-  @crop_faces = calc_faces(modfaces, width, height)
+  @orig_faces = calc_faces(faces, width, height, photo['face_rotation'].to_i)
+  @rw2_faces  = calc_faces(faces, width, height, photo['face_rotation'].to_i, photo['raw_factor_w'] || 1, photo['raw_factor_h'] || 1)
+  @crop_faces = calc_faces(modfaces_, width, height, photo['face_rotation'].to_i)
 
 
   # TODO: additionally specify modified image as second version of original file in XMP (DerivedFrom?)
