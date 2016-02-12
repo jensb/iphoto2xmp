@@ -64,6 +64,9 @@ File.directory?(outdir) || Dir.mkdir(outdir)
 class String
   def bold; "\e[1m#{self}\e[21m" end
   def red;  "\e[31m#{self}\e[0m" end
+  def green;"\e[32m#{self}\e[0m" end
+  def yellow;"\e[33m#{self}\e[0m" end
+  def blue; "\e[34m#{self}\e[0m" end
 end
 
 
@@ -110,6 +113,8 @@ end
 
 # Calculate face position depending on rotation status and file type (special treatment for RW2).
 # Remember that iPhoto "y" values are counted from the *bottom*, like in mathematics! ("x" are from the left as usual.)
+
+
 def calc_faces(faces, mwidth, mheight, frot=0, raw_factor_x=1, raw_factor_y=1)
   res = faces.collect do |face|
     topleftx = "%.8f" % (raw_factor_x * case frot
@@ -127,17 +132,17 @@ def calc_faces(faces, mwidth, mheight, frot=0, raw_factor_x=1, raw_factor_y=1)
                                        end)
 
     width    = "%.8f" % (raw_factor_x * case frot
-                                         when 0 then   face['bottomRightX'] - face['topLeftX']
-                                         when 90 then  face['topLeftY'] - face['bottomRightY']
-                                         when 180 then face['bottomRightX'] - face['topLeftX']
-                                         when 270 then face['topLeftY'] - face['bottomRightY']
+                                         when 0 then   (face['bottomRightX'] - face['topLeftX']).abs
+                                         when 90 then  (face['topLeftY'] - face['bottomRightY']).abs
+                                         when 180 then (face['bottomRightX'] - face['topLeftX']).abs
+                                         when 270 then (face['topLeftY'] - face['bottomRightY']).abs
                                        end)
 
     height   = "%.8f" % (raw_factor_y * case frot
-                                         when 0 then   face['topLeftY'] - face['bottomRightY']
-                                         when 90 then  face['bottomRightX'] - face['topLeftX']
-                                         when 180 then face['topLeftY'] - face['bottomRightY']
-                                         when 270 then face['bottomRightX'] - face['topLeftX']
+                                         when 0 then   (face['topLeftY'] - face['bottomRightY']).abs
+                                         when 90 then  (face['bottomRightX'] - face['topLeftX']).abs
+                                         when 180 then (face['topLeftY'] - face['bottomRightY']).abs
+                                         when 270 then (face['bottomRightX'] - face['topLeftX']).abs
                                        end)
 
     centerx  = "%.8f" % (topleftx.to_f * raw_factor_x + width.to_f/2)
@@ -151,7 +156,7 @@ def calc_faces(faces, mwidth, mheight, frot=0, raw_factor_x=1, raw_factor_y=1)
       'name' => face['name'] || "Unknown", 'email' => face['email'] }
   end
   res.each {|f|
-    str = f['mode'] || "FaceOrig"
+    str = f['mode'] || "Face#{frot}"
     puts "  #{str}: #{f['topleftx']} / #{f['toplefty']} (#{f['centerx']} / #{f['centery']}) +#{f['width']} +#{f['height']};  #{f['name']}\t "
   }
   res
@@ -323,7 +328,10 @@ masters.each do |photo|
   @date_master = parse_date(photo['datem'])
   puts "##{photo['id']}(##{photo['master_id']}): #{photo['caption']}, #{photo['uuid'][0..9]}…/#{photo['master_uuid'][0..9]}…, create: #{@date_master} / edit: #{@date}".bold
   puts "  Desc: #{photodescs[photo['id'].to_i]}"  if photodescs[photo['id'].to_i]
-  puts "  Orig: #{photo["master_height"]}x#{photo["master_width"]} (#{photo["raw_factor_h"]}/#{photo["raw_factor_w"]}), #{origpath} (#{File.exist?("#{basedir}/#{origpath}")})"
+  puts "  Orig: #{photo["master_height"]}x#{photo["master_width"]} (#{"%.4f" % photo["raw_factor_h"]}/#{"%.4f" % photo["raw_factor_w"]}), #{origpath} (#{File.exist?("#{basedir}/#{origpath}") ? "OK" : "missing".red})"
+  if photo['face_rotation'].to_i != 0
+    puts "  Flip: #{photo['face_rotation']}°".blue
+  end
   if modxmppath    # modified version *should* exist
     print "  Mod : #{photo["processed_height"]}x#{photo["processed_width"]}, #{modpath} "
     puts File.exist?("#{basedir}/#{modpath}") ? "(true)" : "(missing)".red
@@ -407,20 +415,19 @@ masters.each do |photo|
       File.open(modxmppath.gsub(/xmp/, "plist_#{edit['adj_name']}"), 'w') do |j|
         PP.pp(edit_plist_hash, j)
       end
-      
+
+      # NB: Not needed any more for face positioning since Library::RKVersionFaceContent was found.
       case edit['adj_name'] 
         when "RKCropOperation"
-          # image was cropped, region metadata cannot be calculated directly, need crop info
           check = edit_plist_hash["$objects"][13] == "inputRotation"
           # eg. 1612, 2109, 67, 1941 - crop positions
+          # actually, these are dynamic - the PList hash must be analyzed in depth to get positions.
           crop_startx = edit_plist_hash["$objects"][20]    # xstart: position from the left
           crop_starty = edit_plist_hash["$objects"][23]    # ystart: position from the bottom!
           crop_width  = edit_plist_hash["$objects"][22]    # xsize:  size in pixels from xstart
           crop_height = edit_plist_hash["$objects"][24]    # ysize:  size in pixels from ystart
           print "Crop (#{crop_startx}x#{crop_starty}+#{crop_width}+#{crop_height}), "
         when "RKStraightenCropOperation"
-          # image was straightened and thus implicitly cropped, region metadata must be adjusted
-          # TODO: calculate region shift from rotational angle.
           check = edit_plist_hash["$objects"][9] == "inputRotation"
           # factor examples: 1.04125 ~ 1.0° ; -19.0507 ~ -19,1°
           crop_rotation_factor = edit_plist_hash["$objects"][10]    # inputRotation in ° (degrees of 360°)
@@ -492,7 +499,10 @@ masters.each do |photo|
 #  puts "  ... fnamelist = #{fnamelist.inspect}"
 #  puts "  ... modfaces_ = #{modfaces_.inspect}"
 
-  # calc_faces(faces, width, height, rotation, raw_factor_x=1, raw_factor_y=1, crop_startx=0, crop_starty=0, crop_width=nil, crop_height=nil)
+  # calc_faces(faces, width, height, rotation, raw_factor_x=1, raw_factor_y=1)
+  # Flipped images (90°, 180°, 270° by EXIF tag) need to have their orig_faces flipped as well and do not need modfaces.
+  # ... for flipped images, modfaces might contain incorrect face data!
+  # StraightenCrop and/or Crop needs modfaces.
   width = photo['master_width'].to_i
   height = photo['master_height'].to_i
   @orig_faces = calc_faces(faces, width, height, photo['face_rotation'].to_i)
@@ -509,7 +519,7 @@ masters.each do |photo|
     done_xmp[origxmppath] = true
   end
   if photo['version_number'].to_i == 1 and modxmppath and !File.exist?(modxmppath)
-    @faces = @crop_faces.empty? ? @orig_faces : @crop_faces
+    @faces = (@crop_faces.empty? or photo['face_rotation'].to_i != 0) ? @orig_faces : @crop_faces
     @uuid = photo['uuid']             # for this image, use modified image's uuid
     j = File.open(modxmppath,  'w')
     j.puts(ERB.new(xmp_mod, 0, ">").result)
