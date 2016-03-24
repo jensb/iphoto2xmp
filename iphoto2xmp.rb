@@ -93,39 +93,45 @@ end
 # Calculate face position depending on rotation status and file type (special treatment for RW2).
 # Remember that iPhoto "y" values are counted from the *bottom*, like in mathematics! ("x" are from the left as usual.)
 
-
+# Example:         image_dim   topLeftX  topLeftY  botRightX  botRightY  width   height
+# DB Library data  2520.3776   0.248     0.569     0.346      0.7
+# DB Faces   data
+#  -> XMP data 1:              0.3779    0.3771                          0.0904  0.1332   ()
+# DB Library data  2520.3776   0.3631    0.4089    0.2734     0.1824                      (masterId=26, faceKey=71 => S.B.)
+# DB Faces   data              0.1742    0.3313    0.265      0.4619
+#  -> XMP data 2:              0.2215    0.2569                          0.0941  0.1371   (S.B.)
 def calc_faces(faces, mwidth, mheight, frot=0, raw_factor_x=1, raw_factor_y=1)
   res = faces.collect do |face|
-    topleftx = "%.8f" % (raw_factor_x * case frot
+    topleftx = "%.6f" % (raw_factor_x * case frot
                                          when 0 then    face['topLeftX']
                                          when 90 then   face['bottomRightY']
                                          when 180 then  1 - face['bottomRightX']
                                          when 270 then  1 - face['topLeftY']
                                        end)
 
-    toplefty = "%.8f" % (raw_factor_y * case frot
+    toplefty = "%.6f" % (raw_factor_y * case frot
                                          when 0 then   1 - face['topLeftY']
                                          when 90 then  1 - face['topLeftX']
                                          when 180 then 1 - face['bottomRightY']
                                          when 270 then face['bottomRightX']
                                        end)
 
-    width    = "%.8f" % (raw_factor_x * case frot
+    width    = "%.6f" % (raw_factor_x * case frot
                                          when 0 then   (face['bottomRightX'] - face['topLeftX']).abs
                                          when 90 then  (face['topLeftY'] - face['bottomRightY']).abs
                                          when 180 then (face['bottomRightX'] - face['topLeftX']).abs
                                          when 270 then (face['topLeftY'] - face['bottomRightY']).abs
                                        end)
 
-    height   = "%.8f" % (raw_factor_y * case frot
+    height   = "%.6f" % (raw_factor_y * case frot
                                          when 0 then   (face['topLeftY'] - face['bottomRightY']).abs
                                          when 90 then  (face['bottomRightX'] - face['topLeftX']).abs
                                          when 180 then (face['topLeftY'] - face['bottomRightY']).abs
                                          when 270 then (face['bottomRightX'] - face['topLeftX']).abs
                                        end)
 
-    centerx  = "%.8f" % (topleftx.to_f * raw_factor_x + width.to_f/2)
-    centery  = "%.8f" % (toplefty.to_f * raw_factor_y + height.to_f/2)
+    centerx  = "%.6f" % (topleftx.to_f * raw_factor_x + width.to_f/2)
+    centery  = "%.6f" % (toplefty.to_f * raw_factor_y + height.to_f/2)
     #if crop_startx>0 or crop_starty>0 or crop_width != mwidth or crop_height != mheight
     #  puts "  FaceCrop: topLeftX/Y=#{face['topLeftX']}/#{face['topLeftY'].to_f}, master_w/h=#{mwidth}/#{mheight}, crop_startx/y=#{crop_startx}/#{mheight-crop_starty}, crop_w/h=#{crop_width}/#{crop_height}"
     #end
