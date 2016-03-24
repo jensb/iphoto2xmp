@@ -229,6 +229,14 @@ fnamehead, *fnames = facedb.execute2("SELECT modelId ,uuid ,faceKey ,name ,email
 fnamelist = fnames.inject({}) {|h,fname| h[fname['faceKey'].to_i] = fname; h }
 puts "Faces #{fnamelist.size})."
 
+# Get list of Event notes (pre-iPhoto 9.1) and save to text file. There is no XMP standard for this data.
+notehead, *notes = librarydb.execute2("SELECT RKNote.note AS note, RKFolder.name AS name
+  FROM RKNote LEFT JOIN RKFolder on RKNote.attachedToUuid = RKFolder.uuid
+  WHERE RKFolder.name IS NOT NULL AND RKFolder.name != '' ORDER BY RKFolder.modelId")
+File.open("#{outdir}/event_notes.csv", 'w') do |f|
+  f.puts("#{notes["name"]}; #{notes["note"]}")
+end unless notes.empty?
+
 #puts "descs = #{descs.inspect}"
 #puts "photodescs = #{photodescs.inspect}"
 #puts "placelist = #{placelist.inspect}"

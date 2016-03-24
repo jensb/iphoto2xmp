@@ -50,13 +50,12 @@ The script can currently export the following metadata:
  * Face names and face coordinates in rotated or cropped images
  * Hidden, Starred, Flagged, Editable, Original, isInTrash flags (as keywords)
  * iPhoto and iOS edit operations as additional *.plist sidecar files (so far, not all are decoded)
-
+ * export iPhoto (before 9.1(?)) Event notes (to a text file).
 
 ## Planned Features (TODO)
 The script *should* (at some point) also do the following.
 Note: This is your chance to fork and create a pull request ;-)
 
- * export iPhoto (before 9.1(?)) Event notes (TODO: where to?). These are in Library.apdb::RKNote SQLite table.
  * use XMP DerivedFrom to automatically group "Original" and "Modified" photos.
  * export Albums as "Album/XXX" keyword collections
  * export Smart Album rules into a separate text file so they can be recreated in the target application
