@@ -12,32 +12,11 @@
 #   ruby iphoto2xmp.rb "~/Pictures/My iPhoto library" "~/Pictures/Export Here"
 #
 ##########################################################################
-#
-# TODO:
-#
-# * Export location 'names'
-#   Database/Properties.apdb::RKPlace, RKPlace:: 
-#   => Properties.apdb::RKPlace, RKPlaceName(placeId -> RKPlace.modelId)
-#
-# * Group Modified/Original photos in XMP sidecars
-#   => from RKVersion.isOriginal und masterUuid
-#
-# * Export photos in Albums as "Album/XXX" Keywords.
-#
-# * Export Smart Albums rules into a text file so that they can be recreated.
-#
-# * Export Slideshows, Calendars, Cards, Books etc. at least as keyword collections.
-#
-# * Group RAW and JPG files? -> https://gist.github.com/nudomarinero/af88acf44868a9e5bcdc
-#                               -> INSERT into ImageRelations VALUES (?, ?, 2) [...]
-#   or: "Group Selected by Time" in Digikam (= manually)
-#
-#######################################################################
 
 require 'progressbar'       # just eye candy
-require 'find'
+require 'find'              # duh
 require 'fileutils'
-require 'sqlite3'
+require 'sqlite3'           # duh
 require 'time'              # required to convert integer timestamps
 require 'cfpropertylist'    # required to read binary plist blobs in SQLite3 dbs, 'plist' gem can't do this
 require 'erb'               # template engine
@@ -160,29 +139,6 @@ def calc_faces(faces, mwidth, mheight, frot=0, raw_factor_x=1, raw_factor_y=1)
     puts "  #{str}: #{f['topleftx']} / #{f['toplefty']} (#{f['centerx']} / #{f['centery']}) +#{f['width']} +#{f['height']};  #{f['name']}\t "
   }
   res
-end
-
-
-# TODO: Rotate and zoom face x/y values
-def crop_rotate_faces(mwidth, mheight, faces, crop_rotation_factor)
-  rotfaces = faces.collect {|face|
-    # 1. Convert so that center of picture is zero x/y.
-    # 2. Rotate and zoom.
-    # 3. Convert back.
-    # 4. Zoom so that rotated image fills original rectangle.
-  }
-  faces     # temporary.
-end
-
-# Rotate a point around the coordinate center (0,0).
-def rotate_point(x, y, origx, origy, degrees)
-  rad = Math::PI/180 * degrees
-  x2 = x - origx
-  y2 = y - origy
-  cos = Math.cos(rad)
-  sin = Math.sin(rad)
-  zoom = zoom_point()
-  [x2*cos - y2*sin + origx, x2*sin + y2*cos + origy]
 end
 
 
@@ -357,8 +313,9 @@ masters.each do |photo|
   @flagged = photo['flagged']     # set ColorLabel to flagged, would set value '1' which means 'red'
   @date_meta = parse_date(photomoddates[photo['id']])
 
-  # TODO: save GPS location info in XMP file (RKVersion::overridePlaceId -> Properties::RKPlace
+  # save GPS location info in XMP file (RKVersion::overridePlaceId -> Properties::RKPlace
   #       (user boundaryData?)
+  # TODO: use Library::RKPlaceForVersion to get named Places for photo Versions
   @longitude = photo['longitude']
   @latitude  = photo['latitude']
   if p = placelist[photo['place_id']]
