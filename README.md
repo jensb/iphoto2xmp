@@ -51,15 +51,20 @@ The script can currently export the following metadata:
  * Hidden, Starred, Flagged, Editable, Original, isInTrash flags (as keywords)
  * iPhoto and iOS edit operations as additional *.plist sidecar files (so far, not all are decoded)
  * export iPhoto (before 9.1(?)) Event notes (to a text file).
+ * export Albums as keyword collections (Library:RKFolder/RKAlbum, Library:RKAlbumVersion)
+   => into "TopLevelAlbums/" tag hierarchy
+ * export iPhoto's Slideshows, Calendars, Cards, Books at least as keyword collections (to identify which photos were used).
+   => into "TopLevelKeepsakes/" tag hierarchy
 
 ## Planned Features (TODO)
 The script *should* (at some point) also do the following.
 Note: This is your chance to fork and create a pull request ;-)
 
- * use XMP DerivedFrom to automatically group "Original" and "Modified" photos.
- * export Albums as "Album/XXX" keyword collections
+ * use XMP DerivedFrom to automatically group "Original" and "Modified" photos from RKVersion.isOriginal und masterUuid
+   This is not (currently) compatible with Digikam, but might be in the future so we'll use it.
+   Optional: Additionally provide a SQL script that updates the Digikam SQLite db to group photos correctly.
+ * export Event thumbnails
  * export Smart Album rules into a separate text file so they can be recreated in the target application
- * export iPhoto's Slideshows, Calendars, Cards, Books at least as keyword collections (to identify which photos were used).
  * export an image's edit history at least as a descriptive text, perhaps as XMP (e.g. digikam:history tag)
  * correctly identify iOS Edit operations (which create their own proprietary XMP sidecar file)
 

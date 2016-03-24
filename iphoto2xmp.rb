@@ -237,6 +237,24 @@ File.open("#{outdir}/event_notes.csv", 'w') do |f|
   f.puts("#{notes["name"]}; #{notes["note"]}")
 end unless notes.empty?
 
+
+# Get Folders and Albums. Convert to (hierarchical) keywords since "Albums" are nothing but tag collections.
+# Also get search criteria for "smart albums". Save into text file (for lack of better solution).
+# 1. Get folder structure, create tag pathnames as strings.
+#    Folders are just a pseudo hierarchy and can contain Albums and Smart Albums.
+folderhead, *folderdata = librarydb.execute2(
+    "SELECT modelId, uuid, folderType, name, parentFolderUuid, folderPath
+     FROM RKFolder
+     WHERE -- isMagic=0 AND   -- Magic=1 folders are iPhoto internal like Trash, Library etc. but we need these for the path
+       folderType=1           -- folderType=2 are Events. We handle those as filesystem directories.
+  ")
+# folderPath is a string like "modelId1/modelId2/...". Convert these using the real folder names to get the path strings.
+folderlist  = folderdata.inject({}) {|h,folder| h[folder['modelId'].to_i] = folder; h }
+foldernames = folderdata.inject({}) {|h,folder| h[folder['modelId'].to_s] = folder['name']; h }
+folderlist.each {|k,v| folderlist[k]['folderPath'].gsub!(/\d*/, foldernames).gsub!(/^\/(.*)\/$/, '\1') }
+puts "foldernames = #{foldernames.inspect}"
+puts "folderlist = #{folderlist.collect{|k,v| v['folderPath']}.join(", ")}"
+
 #puts "descs = #{descs.inspect}"
 #puts "photodescs = #{photodescs.inspect}"
 #puts "placelist = #{placelist.inspect}"
@@ -357,6 +375,21 @@ masters.each do |photo|
   @keylist << "iPhoto/inTrash" if photo["in_trash"]==1
   puts "  Tags: #{photokw.collect {|k| "#{k['name']}(#{k['modelId']})" }.join(", ")}" unless photokw.empty?
 
+
+  # For each photo, get list of albums where this photo is contained. Recreate folder/album hierarchy as tags.
+  albumhead, *albumdata = librarydb.execute2(
+   "SELECT av.modelId, av.versionId, av.albumId, a.name, f.modelId AS f_id, f.uuid AS f_uuid
+      FROM RKAlbumVersion av LEFT JOIN RKAlbum a ON av.albumId=a.modelId
+                             LEFT JOIN RKFolder f ON f.uuid=a.folderUuid
+     WHERE av.versionId=#{photo['id'].to_i}")
+  albumlist  = albumdata.uniq.inject({}) {|h,album|
+    h[album['modelId'].to_i] = album
+    h[album['modelId'].to_i]['path'] = "#{folderlist[album['f_id']]['folderPath']}/#{album['name']}"
+    h
+  }
+  albums = albumlist.collect{|k,v| v['path']}.uniq
+  puts "  AlbumTags: #{albums}".red
+  @keylist += albums
 
   # Get edits. Discard pseudo-Edits like RAW decoding and (perhaps?) rotations
   # but save the others in the XMP edit history.
