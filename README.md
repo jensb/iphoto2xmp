@@ -48,6 +48,7 @@ The script can currently export the following metadata:
  * Edited and original images, edit operation (eg. "Crop", "WhiteBalance", ...)
  * Face names and face coordinates
  * Face names and face coordinates in rotated or cropped images
+   (still buggy if the image had EXIF rotation flags set since then iPhoto saves weird position values)
  * Hidden, Starred, Flagged, Editable, Original, isInTrash flags (as keywords)
  * iPhoto and iOS edit operations as additional *.plist sidecar files (so far, not all are decoded)
  * export iPhoto (before 9.1(?)) Event notes (to a text file).
@@ -61,6 +62,7 @@ The script can currently export the following metadata:
 The script *should* (at some point) also do the following.
 Note: This is your chance to fork and create a pull request ;-)
 
+ * Fix face coordinates for EXIF rotated images (see above)
  * use XMP DerivedFrom to automatically group "Original" and "Modified" photos from RKVersion.isOriginal und masterUuid
    This is not (currently) compatible with Digikam, but might be in the future so we'll use it.
    Optional: Additionally provide a SQL script that updates the Digikam SQLite db to group photos correctly.
