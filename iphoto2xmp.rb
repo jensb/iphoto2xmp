@@ -255,6 +255,26 @@ folderlist.each {|k,v| folderlist[k]['folderPath'].gsub!(/\d*/, foldernames).gsu
 puts "foldernames = #{foldernames.inspect}"
 puts "folderlist = #{folderlist.collect{|k,v| v['folderPath']}.join(", ")}"
 
+
+
+albumhead, *albumdata = librarydb.execute2(
+ "SELECT modelId, uuid, name, folderUuid, filterData, queryData, viewData
+    FROM RKAlbum
+   WHERE albumSubclass = 2
+     AND uuid NOT LIKE '%Album%'")
+albumqdir = "#{outdir}/00_AlbumQueryData"
+File.directory?(albumqdir) || Dir.mkdir(albumqdir)
+puts "Albumdata: writing #{albumdata.collect{|a| a['name'] }.join(", ")}".red
+albumdata.each do |d|
+  next if !d['name'] or d['name'] == ''
+  ['filterData', 'queryData', 'viewData'].each do |datakey|
+    next if d[datakey].nil?
+    File.open("#{albumqdir}/#{d['name']}.#{datakey}", 'w') do |j|
+      PP.pp(CFPropertyList.native_types(CFPropertyList::List.new(data: d[datakey]).value), j)
+    end
+  end
+end
+
 #puts "descs = #{descs.inspect}"
 #puts "photodescs = #{photodescs.inspect}"
 #puts "placelist = #{placelist.inspect}"
