@@ -55,6 +55,7 @@ The script can currently export the following metadata:
    => into "TopLevelAlbums/" tag hierarchy
  * export iPhoto's Slideshows, Calendars, Cards, Books at least as keyword collections (to identify which photos were used).
    => into "TopLevelKeepsakes/" tag hierarchy
+ * export Smart Album rules into a separate text file so they can be recreated in the target application
 
 ## Planned Features (TODO)
 The script *should* (at some point) also do the following.
@@ -64,7 +65,6 @@ Note: This is your chance to fork and create a pull request ;-)
    This is not (currently) compatible with Digikam, but might be in the future so we'll use it.
    Optional: Additionally provide a SQL script that updates the Digikam SQLite db to group photos correctly.
  * export Event thumbnails
- * export Smart Album rules into a separate text file so they can be recreated in the target application
  * export an image's edit history at least as a descriptive text, perhaps as XMP (e.g. digikam:history tag)
  * correctly identify iOS Edit operations (which create their own proprietary XMP sidecar file)
 
