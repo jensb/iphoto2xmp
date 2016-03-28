@@ -84,7 +84,7 @@ end
 # Returns "YYYY-MM-DDTHH:MM:SS+NNNN" RFC 3339 string for XMP file.
 # TODO: read time zone from iPhoto database and do not assume GMT+1.
 def parse_date(intdate)
-  return "" unless intdate
+  return '' unless intdate
   diff = Time.parse('2001-01-01 +0100')
   Time.at(intdate + diff.to_i).to_datetime.rfc3339
 end
@@ -102,43 +102,43 @@ end
 #  -> XMP data 2:              0.2215    0.2569                          0.0941  0.1371   (S.B.)
 def calc_faces(faces, mwidth, mheight, frot=0, raw_factor_x=1, raw_factor_y=1)
   res = faces.collect do |face|
-    topleftx = "%.6f" % (raw_factor_x * case frot
+    topleftx = '%.6f' % (raw_factor_x * case frot
                                          when 0 then    face['topLeftX']
                                          when 90 then   face['bottomRightY']
                                          when 180 then  1 - face['bottomRightX']
                                          when 270 then  1 - face['topLeftY']
-                                       end)
+                                        end)
 
-    toplefty = "%.6f" % (raw_factor_y * case frot
+    toplefty = '%.6f' % (raw_factor_y * case frot
                                          when 0 then   1 - face['topLeftY']
                                          when 90 then  1 - face['topLeftX']
                                          when 180 then 1 - face['bottomRightY']
                                          when 270 then face['bottomRightX']
-                                       end)
+                                        end)
 
-    width    = "%.6f" % (raw_factor_x * case frot
+    width    = '%.6f' % (raw_factor_x * case frot
                                          when 0 then   (face['bottomRightX'] - face['topLeftX']).abs
                                          when 90 then  (face['topLeftY'] - face['bottomRightY']).abs
                                          when 180 then (face['bottomRightX'] - face['topLeftX']).abs
                                          when 270 then (face['topLeftY'] - face['bottomRightY']).abs
-                                       end)
+                                        end)
 
-    height   = "%.6f" % (raw_factor_y * case frot
+    height   = '%.6f' % (raw_factor_y * case frot
                                          when 0 then   (face['topLeftY'] - face['bottomRightY']).abs
                                          when 90 then  (face['bottomRightX'] - face['topLeftX']).abs
                                          when 180 then (face['topLeftY'] - face['bottomRightY']).abs
                                          when 270 then (face['bottomRightX'] - face['topLeftX']).abs
-                                       end)
+                                        end)
 
-    centerx  = "%.6f" % (topleftx.to_f * raw_factor_x + width.to_f/2)
-    centery  = "%.6f" % (toplefty.to_f * raw_factor_y + height.to_f/2)
+    centerx  = '%.6f' % (topleftx.to_f * raw_factor_x + width.to_f/2)
+    centery  = '%.6f' % (toplefty.to_f * raw_factor_y + height.to_f/2)
     #if crop_startx>0 or crop_starty>0 or crop_width != mwidth or crop_height != mheight
     #  puts "  FaceCrop: topLeftX/Y=#{face['topLeftX']}/#{face['topLeftY'].to_f}, master_w/h=#{mwidth}/#{mheight}, crop_startx/y=#{crop_startx}/#{mheight-crop_starty}, crop_w/h=#{crop_width}/#{crop_height}"
     #end
-    { 'mode' => raw_factor_x==1 ? face['mode'] : "FaceRaw ",
-      'topleftx' => topleftx, 'toplefty' => toplefty,
-      'centerx'  => centerx,  'centery' => centery, 'width' => width, 'height' => height,
-      'name' => face['name'] || "Unknown", 'email' => face['email'] }
+    {'mode' => raw_factor_x==1 ? face['mode'] : 'FaceRaw ',
+     'topleftx' => topleftx, 'toplefty' => toplefty,
+     'centerx'  => centerx, 'centery' => centery, 'width' => width, 'height' => height,
+     'name' => face['name'] || 'Unknown', 'email' => face['email'] }
   end
   res.each {|f|
     str = f['mode'] || "Face#{frot}"
@@ -200,13 +200,13 @@ masterhead, *masters = librarydb.execute2(
 print "#{masters.count}; "
 
 # TODO: Add iPhoto <9.1(?) type notes to Events. Only in main iPhoto Library, not in test library.
-notehead, notes = librarydb.execute2("SELECT * from RKNote")
+notehead, notes = librarydb.execute2('SELECT * from RKNote')
 
 propertydb = SQLite3::Database.new("#{iphotodir}/Database/apdb/Properties.apdb")
 propertydb.results_as_hash = true
-placehead, *places = propertydb.execute2("SELECT 
-  p.modelId, p.uuid, p.defaultName, p.minLatitude, p.minLongitude, p.maxLatitude, p.maxLongitude, p.centroid, p.userDefined 
-  FROM RKPlace p");
+placehead, *places = propertydb.execute2('SELECT
+  p.modelId, p.uuid, p.defaultName, p.minLatitude, p.minLongitude, p.maxLatitude, p.maxLongitude, p.centroid, p.userDefined
+  FROM RKPlace p');
 # placehead, *places = propertydb.execute2("SELECT p.modelId, p.uuid, p.defaultName, p.minLatitude, p.minLongitude, p.maxLatitude, p.maxLongitude, p.centroid, p.userDefined, n.language, n.description FROM RKPlace p INNER JOIN RKPlaceName n ON p.modelId=n.placeId");
 placelist = places.inject({}) {|h,place| h[place['modelId']] = place; h }
 print "Properties (#{places.count} places; "
@@ -225,7 +225,7 @@ facedb = SQLite3::Database.new("#{iphotodir}/Database/apdb/Faces.db")
 facedb.results_as_hash = true
 
 # Get list of names to associate with modified face rectangle list (which does not contain this info).
-fnamehead, *fnames = facedb.execute2("SELECT modelId ,uuid ,faceKey ,name ,email FROM RKFaceName")
+fnamehead, *fnames = facedb.execute2('SELECT modelId ,uuid ,faceKey ,name ,email FROM RKFaceName')
 fnamelist = fnames.inject({}) {|h,fname| h[fname['faceKey'].to_i] = fname; h }
 puts "Faces #{fnamelist.size})."
 
@@ -234,7 +234,7 @@ notehead, *notes = librarydb.execute2("SELECT RKNote.note AS note, RKFolder.name
   FROM RKNote LEFT JOIN RKFolder on RKNote.attachedToUuid = RKFolder.uuid
   WHERE RKFolder.name IS NOT NULL AND RKFolder.name != '' ORDER BY RKFolder.modelId")
 File.open("#{outdir}/event_notes.csv", 'w') do |f|
-  f.puts("#{notes["name"]}; #{notes["note"]}")
+  f.puts("#{notes['name']}; #{notes['note']}")
 end unless notes.empty?
 
 
@@ -243,11 +243,11 @@ end unless notes.empty?
 # 1. Get folder structure, create tag pathnames as strings.
 #    Folders are just a pseudo hierarchy and can contain Albums and Smart Albums.
 folderhead, *folderdata = librarydb.execute2(
-    "SELECT modelId, uuid, folderType, name, parentFolderUuid, folderPath
+    'SELECT modelId, uuid, folderType, name, parentFolderUuid, folderPath
      FROM RKFolder
      WHERE -- isMagic=0 AND   -- Magic=1 folders are iPhoto internal like Trash, Library etc. but we need these for the path
        folderType=1           -- folderType=2 are Events. We handle those as filesystem directories.
-  ")
+  ')
 # folderPath is a string like "modelId1/modelId2/...". Convert these using the real folder names to get the path strings.
 folderlist  = folderdata.inject({}) {|h,folder| h[folder['modelId'].to_i] = folder; h }
 foldernames = folderdata.inject({}) {|h,folder| h[folder['modelId'].to_s] = folder['name']; h }
@@ -275,11 +275,6 @@ albumdata.each do |d|
   end
 end
 
-#puts "descs = #{descs.inspect}"
-#puts "photodescs = #{photodescs.inspect}"
-#puts "placelist = #{placelist.inspect}"
-#puts "fnamelist_keys = #{fnamelist.keys.sort.inspect}"
-
 
 #
 # Stage 2: Big loop through all photos
@@ -288,7 +283,7 @@ basedir = iphotodir
 puts "Phase 2/3: Exporting iPhoto archive\n  from #{basedir}\n  to   #{outdir}".bold
 #bar = ProgressBar.new("Exporting", masters.length)
 
-$missing = File.open("#{outdir}/missing.log","w")
+$missing = File.open("#{outdir}/missing.log", 'w')
 $problems = false
 $known = Hash.new
 done_xmp = Hash.new
@@ -320,16 +315,16 @@ masters.each do |photo|
 
   # FIXME: Fix size of RW2 files (incorrectly set to 3776x2520, but Digikam sees 3792x2538) (Panasonic LX3)
   # TODO: Get real size of RW2 files (dcraw -i -v $FILE | grep "Image Size" | ...) and use that
-  if photo["imagepath"] =~ /RW2$/ and photo["master_height"].to_i == 2520
-    photo["raw_factor_h"] = 2538.0 / photo["master_height"].to_f   # for converting face positions
-    photo["raw_factor_w"] = photo["raw_factor_h"] * 2.0 - 1        # don't ask me. It's not "3792.0 / photo["master_width"].to_f".
+  if photo['imagepath'] =~ /RW2$/ and photo['master_height'].to_i == 2520
+    photo['raw_factor_h'] = 2538.0 / photo['master_height'].to_f   # for converting face positions
+    photo['raw_factor_w'] = photo['raw_factor_h'] * 2.0 - 1        # don't ask me. It's not "3792.0 / photo["master_width"].to_f".
     #photo["raw_factor_h"] = 1.01
     #photo["raw_factor_w"] = 1.01
-    photo["master_height"] = 2538    # incorrect. iPhoto always uses its own internal (wrong) sizes for crop calculations
-    photo["master_width"] = 3792
+    photo['master_height'] = 2538    # incorrect. iPhoto always uses its own internal (wrong) sizes for crop calculations
+    photo['master_width'] = 3792
   else
-    photo["raw_factor_h"] = 1               # Dummy
-    photo["raw_factor_w"] = 1
+    photo['raw_factor_h'] = 1               # Dummy
+    photo['raw_factor_w'] = 1
   end
 
   @date = parse_date(photo['date'])
@@ -389,11 +384,11 @@ masters.each do |photo|
                             INNER JOIN RKKeyword ON RKKeywordForVersion.keywordId=RKKeyword.modelId
    WHERE RKVersion.uuid='#{photo['uuid']}'")
   @keylist = photokw.collect {|k| k['name'] }
-  @keylist << "iPhoto/Hidden" if photo["hidden"]==1
-  @keylist << "iPhoto/Flagged" if photo["flagged"]==1
-  @keylist << "iPhoto/Original" if photo["original"]==1
-  @keylist << "iPhoto/inTrash" if photo["in_trash"]==1
   puts "  Tags: #{photokw.collect {|k| "#{k['name']}(#{k['modelId']})" }.join(", ")}" unless photokw.empty?
+  @keylist << 'iPhoto/Hidden' if photo['hidden']==1
+  @keylist << 'iPhoto/Flagged' if photo['flagged']==1
+  @keylist << 'iPhoto/Original' if photo['original']==1
+  @keylist << 'iPhoto/inTrash' if photo['in_trash']==1
 
 
   # For each photo, get list of albums where this photo is contained. Recreate folder/album hierarchy as tags.
@@ -442,23 +437,23 @@ masters.each do |photo|
 
       # NB: Not needed any more for face positioning since Library::RKVersionFaceContent was found.
       case edit['adj_name'] 
-        when "RKCropOperation"
-          check = edit_plist_hash["$objects"][13] == "inputRotation"
+        when 'RKCropOperation'
+          check = edit_plist_hash['$objects'][13] == 'inputRotation'
           # eg. 1612, 2109, 67, 1941 - crop positions
           # actually, these are dynamic - the PList hash must be analyzed in depth to get positions.
-          crop_startx = edit_plist_hash["$objects"][20]    # xstart: position from the left
-          crop_starty = edit_plist_hash["$objects"][23]    # ystart: position from the bottom!
-          crop_width  = edit_plist_hash["$objects"][22]    # xsize:  size in pixels from xstart
-          crop_height = edit_plist_hash["$objects"][24]    # ysize:  size in pixels from ystart
+          crop_startx = edit_plist_hash['$objects'][20]    # xstart: position from the left
+          crop_starty = edit_plist_hash['$objects'][23]    # ystart: position from the bottom!
+          crop_width  = edit_plist_hash['$objects'][22]    # xsize:  size in pixels from xstart
+          crop_height = edit_plist_hash['$objects'][24]    # ysize:  size in pixels from ystart
           print "Crop (#{crop_startx}x#{crop_starty}+#{crop_width}+#{crop_height}), "
-        when "RKStraightenCropOperation"
-          check = edit_plist_hash["$objects"][9] == "inputRotation"
+        when 'RKStraightenCropOperation'
+          check = edit_plist_hash['$objects'][9] == 'inputRotation'
           # factor examples: 1.04125 ~ 1.0° ; -19.0507 ~ -19,1°
-          crop_rotation_factor = edit_plist_hash["$objects"][10]    # inputRotation in ° (degrees of 360°)
+          crop_rotation_factor = edit_plist_hash['$objects'][10]    # inputRotation in ° (degrees of 360°)
           print "StraightenCrop (#{crop_rotation_factor}), "
-        when "DGiOSEditsoperation"
+        when 'DGiOSEditsoperation'
           # TODO: image was edited in iOS which creates its own XMP file (with proprietary aas and crs tags).
-          print "iOSEdits (???), "
+          print 'iOSEdits (???), '
         else
           # No region adjustment required for RawDecode, Whitebalance, ShadowHighlight, Exposure, NoiseReduction,
           # ProSharopen, iPhotoRedEye, Retouch, iPhotoEffects, and possibly others
@@ -514,9 +509,9 @@ masters.each do |photo|
 #  puts "  ... modfaces = #{modfaces.collect {|f| f["face_key"] }.sort}"
 #  puts "  ... modfaces = #{modfaces}"
   modfaces_ = modfaces.collect { |v|
-     v.update({"mode" => "FaceEdit",
-               "name" => (fnamelist[v["face_key"].to_i]["name"] rescue "Unknown"),
-              "email" => (fnamelist[v["face_key"].to_i]["email"] rescue "")})
+     v.update({'mode' => 'FaceEdit',
+               'name' => (fnamelist[v['face_key'].to_i]['name'] rescue 'Unknown'),
+               'email' => (fnamelist[v['face_key'].to_i]['email'] rescue '')})
      #modfaces[k]["name"] = fnamelist[modfaces[k]["face_key"].to_i]["name"] rescue "Unknown"
      #modfaces[k]["email"] = fnamelist[modfaces[k]["face_key"].to_i]["email"] rescue ""
   }
@@ -536,9 +531,9 @@ masters.each do |photo|
 
   # TODO: additionally specify modified image as second version of original file in XMP (DerivedFrom?)
   unless(File.exist?(origxmppath))
-    @faces = photo["imagepath"] =~ /RW2$/ ? @rw2_faces : @orig_faces
+    @faces = photo['imagepath'] =~ /RW2$/ ? @rw2_faces : @orig_faces
     j = File.open(origxmppath, 'w')
-    j.puts(ERB.new(xmp, 0, ">").result)
+    j.puts(ERB.new(xmp, 0, '>').result)
     j.close
     done_xmp[origxmppath] = true
   end
@@ -546,7 +541,7 @@ masters.each do |photo|
     @faces = (@crop_faces.empty? or photo['face_rotation'].to_i != 0) ? @orig_faces : @crop_faces
     @uuid = photo['uuid']             # for this image, use modified image's uuid
     j = File.open(modxmppath,  'w')
-    j.puts(ERB.new(xmp_mod, 0, ">").result)
+    j.puts(ERB.new(xmp_mod, 0, '>').result)
     j.close
   end
 
@@ -557,7 +552,7 @@ $missing.close
 if $problems
   puts "\nOne or more files were missing from your iTunes library!"
   puts File.read("#{outdir}/missing.log")
-  puts "You can find this list in missing.log in the output directory."
+  puts 'You can find this list in missing.log in the output directory.'
 else
   File.unlink("#{outdir}/missing.log")
 end
