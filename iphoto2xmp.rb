@@ -49,7 +49,19 @@ class String
 end
 
 
+# Print debug output, if ENV['DEBUG'] is equal or greater to level passed as parameter.
+# levels: 3: debug output,   all found metadata for each photo
+#         2: verbose output, most found metadata for each photo
+#         1: normal output,  one line with basic info for each photo
+#   default: quiet output,   progressbar with percent complete for whole operation
+def debug(level, str, newline=true)
+  return unless level==0 or (e = ENV['DEBUG'] and e.to_i >= level)
+  if newline ; puts str else print str end
+end
+
+
 # Link photo (original or modified version) to destination directory
+# TODO: prevent duplicate links from the same original photo.
 def link_photo(basedir, outdir, photo, imgfile, origfile)
   imgpath  = "#{basedir}/#{imgfile}"
   destpath = photo['rollname']  ?  ("#{outdir}/#{photo['rollname']}/#{File.basename(imgpath)}")  :  "#{outdir}#{imgfile}"
@@ -64,7 +76,6 @@ def link_photo(basedir, outdir, photo, imgfile, origfile)
     ver = 2
     while File.exist?(destpath)
       destpath.sub!(/(_v[0-9]+)?\.([^.]*)$/, "_v#{ver}.\\2")
-      #puts "  ... adding extension to #{destpath}"
       ver += 1
     end
     FileUtils.ln(imgpath, destpath)
@@ -142,7 +153,7 @@ def calc_faces(faces, mwidth, mheight, frot=0, raw_factor_x=1, raw_factor_y=1)
   end
   res.each {|f|
     str = f['mode'] || "Face#{frot}"
-    puts "  #{str}: #{f['topleftx']} / #{f['toplefty']} (#{f['centerx']} / #{f['centery']}) +#{f['width']} +#{f['height']};  #{f['name']}\t "
+    debug 3, "  #{str}: #{f['topleftx']} / #{f['toplefty']} (#{f['centerx']} / #{f['centery']}) +#{f['width']} +#{f['height']};  #{f['name']}\t ", true
   }
   res
 end
@@ -153,7 +164,7 @@ end
 # Cannot use AlbumData.xml because a lot of info is not listed at all in AlbumData.xml but should be exported.
 # Examples: keywords, hidden photos, trashcan, location *names*, ...
 ##########################################################################
-print "Phase 1: Reading iPhoto SQLite data (Records: Library ".bold
+debug 1, 'Phase 1: Reading iPhoto SQLite data (Records: Library '.bold, false
 librarydb = SQLite3::Database.new("#{iphotodir}/Database/apdb/Library.apdb")
 librarydb.results_as_hash = true  # gibt [{"modelId"=>1, "uuid"=>"SwX6W9...", "name"=>".."
 #keyhead, *keywords = librarydb.execute2("SELECT modelId, uuid, name, shortcut FROM RKKeyword")
@@ -197,7 +208,7 @@ masterhead, *masters = librarydb.execute2(
     LEFT JOIN RKMaster m ON m.uuid = v.masterUuid
     LEFT JOIN RKImportGroup i ON m.importGroupUuid = i.uuid
  ")
-print "#{masters.count}; "
+debug 1, "#{masters.count}; ", false
 
 # TODO: Add iPhoto <9.1(?) type notes to Events. Only in main iPhoto Library, not in test library.
 notehead, notes = librarydb.execute2('SELECT * from RKNote')
@@ -209,7 +220,7 @@ placehead, *places = propertydb.execute2('SELECT
   FROM RKPlace p');
 # placehead, *places = propertydb.execute2("SELECT p.modelId, p.uuid, p.defaultName, p.minLatitude, p.minLongitude, p.maxLatitude, p.maxLongitude, p.centroid, p.userDefined, n.language, n.description FROM RKPlace p INNER JOIN RKPlaceName n ON p.modelId=n.placeId");
 placelist = places.inject({}) {|h,place| h[place['modelId']] = place; h }
-print "Properties (#{places.count} places; "
+debug 1, "Properties (#{places.count} places; ", false
 
 # Get description text of all photos.
 deschead, *descs = propertydb.execute2("SELECT
@@ -219,7 +230,7 @@ WHERE i.propertyKey = 'Caption/Abstract' ORDER BY versionId")
 photodescs = descs.inject({}) {|h,desc| h[desc['versionId']] = desc['string']; h }
 # FIXME: strictly speaking, this is the date of adding the description, not the last edit date
 photomoddates = descs.inject({}) {|h,desc| h[desc['versionId']] = desc['modDate']; h }
-print "Description #{descs.count}; "
+debug 1, "Description #{descs.count}; ", false
 
 facedb = SQLite3::Database.new("#{iphotodir}/Database/apdb/Faces.db")
 facedb.results_as_hash = true
@@ -227,7 +238,7 @@ facedb.results_as_hash = true
 # Get list of names to associate with modified face rectangle list (which does not contain this info).
 fnamehead, *fnames = facedb.execute2('SELECT modelId ,uuid ,faceKey ,name ,email FROM RKFaceName')
 fnamelist = fnames.inject({}) {|h,fname| h[fname['faceKey'].to_i] = fname; h }
-puts "Faces #{fnamelist.size})."
+debug 1, "Faces #{fnamelist.size}; ", false
 
 # Get list of Event notes (pre-iPhoto 9.1) and save to text file. There is no XMP standard for this data.
 notehead, *notes = librarydb.execute2("SELECT RKNote.note AS note, RKFolder.name AS name
@@ -236,6 +247,7 @@ notehead, *notes = librarydb.execute2("SELECT RKNote.note AS note, RKFolder.name
 File.open("#{outdir}/event_notes.csv", 'w') do |f|
   f.puts("#{notes['name']}; #{notes['note']}")
 end unless notes.empty?
+debug 1, "Event Notes #{notes.size}).", true
 
 
 # Get Folders and Albums. Convert to (hierarchical) keywords since "Albums" are nothing but tag collections.
@@ -252,8 +264,8 @@ folderhead, *folderdata = librarydb.execute2(
 folderlist  = folderdata.inject({}) {|h,folder| h[folder['modelId'].to_i] = folder; h }
 foldernames = folderdata.inject({}) {|h,folder| h[folder['modelId'].to_s] = folder['name']; h }
 folderlist.each {|k,v| folderlist[k]['folderPath'].gsub!(/\d*/, foldernames).gsub!(/^\/(.*)\/$/, '\1') }
-puts "foldernames = #{foldernames.inspect}"
-puts "folderlist = #{folderlist.collect{|k,v| v['folderPath']}.join(", ")}"
+debug 1, "foldernames = #{foldernames.inspect}", true
+debug 1, "folderlist = #{folderlist.collect{|k,v| v['folderPath']}.join(', ')}", true
 
 
 
@@ -264,7 +276,7 @@ albumhead, *albumdata = librarydb.execute2(
      AND uuid NOT LIKE '%Album%'")
 albumqdir = "#{outdir}/00_AlbumQueryData"
 File.directory?(albumqdir) || Dir.mkdir(albumqdir)
-puts "Albumdata: writing #{albumdata.collect{|a| a['name'] }.join(", ")}".red
+debug 2, "Albumdata: writing #{albumdata.collect{|a| a['name'] }.join(', ')}".red, true
 albumdata.each do |d|
   next if !d['name'] or d['name'] == ''
   ['filterData', 'queryData', 'viewData'].each do |datakey|
@@ -280,8 +292,8 @@ end
 # Stage 2: Big loop through all photos
 #
 basedir = iphotodir
-puts "Phase 2/3: Exporting iPhoto archive\n  from #{basedir}\n  to   #{outdir}".bold
-#bar = ProgressBar.new("Exporting", masters.length)
+debug 1, "Phase 2/3: Exporting iPhoto archive\n  from #{basedir}\n  to   #{outdir}".bold, true
+bar = ProgressBar.new('Exporting', masters.length) unless ENV['DEBUG']   # only if DEBUG isn't set
 
 $missing = File.open("#{outdir}/missing.log", 'w')
 $problems = false
@@ -329,15 +341,15 @@ masters.each do |photo|
 
   @date = parse_date(photo['date'])
   @date_master = parse_date(photo['datem'])
-  puts "##{photo['id']}(##{photo['master_id']}): #{photo['caption']}, #{photo['uuid'][0..9]}…/#{photo['master_uuid'][0..9]}…, create: #{@date_master} / edit: #{@date}".bold
-  puts "  Desc: #{photodescs[photo['id'].to_i]}"  if photodescs[photo['id'].to_i]
-  puts "  Orig: #{photo["master_height"]}x#{photo["master_width"]} (#{"%.4f" % photo["raw_factor_h"]}/#{"%.4f" % photo["raw_factor_w"]}), #{origpath} (#{File.exist?("#{basedir}/#{origpath}") ? "OK" : "missing".red})"
+  debug 1, "#{photo['id']}(#{photo['master_id']}): #{photo['caption']}, #{photo['uuid'][0..5]}…/#{photo['master_uuid'][0..5]}…, c:#{@date_master} / e:#{@date}".bold, true
+  debug 2, "  Desc: #{photodescs[photo['id'].to_i]}".green, true  if photodescs[photo['id'].to_i]
+  debug 2, "  Orig: #{photo['master_height']}x#{photo['master_width']} (#{'%.4f' % photo['raw_factor_h']}/#{'%.4f' % photo['raw_factor_w']}), #{origpath} (#{File.exist?("#{basedir}/#{origpath}") ? 'OK' : 'missing'.red})", true
   if photo['face_rotation'].to_i != 0
-    puts "  Flip: #{photo['face_rotation']}°".blue
+    debug 2, "  Flip: #{photo['face_rotation']}°".blue, true
   end
   if modxmppath    # modified version *should* exist
-    print "  Mod : #{photo["processed_height"]}x#{photo["processed_width"]}, #{modpath} "
-    puts File.exist?("#{basedir}/#{modpath}") ? "(true)" : "(missing)".red
+    debug 2, "  Mod : #{photo['processed_height']}x#{photo['processed_width']}, #{modpath} ", false
+    debug 2, File.exist?("#{basedir}/#{modpath}") ? '(true)' : '(missing)'.red, true
   end
 
   #
@@ -384,11 +396,11 @@ masters.each do |photo|
                             INNER JOIN RKKeyword ON RKKeywordForVersion.keywordId=RKKeyword.modelId
    WHERE RKVersion.uuid='#{photo['uuid']}'")
   @keylist = photokw.collect {|k| k['name'] }
-  puts "  Tags: #{photokw.collect {|k| "#{k['name']}(#{k['modelId']})" }.join(", ")}" unless photokw.empty?
   @keylist << 'iPhoto/Hidden' if photo['hidden']==1
   @keylist << 'iPhoto/Flagged' if photo['flagged']==1
   @keylist << 'iPhoto/Original' if photo['original']==1
   @keylist << 'iPhoto/inTrash' if photo['in_trash']==1
+  debug 2, "  Tags: #{photokw.collect {|k| "#{k['name']}(#{k['modelId']})" }.join(', ')}".blue, true unless photokw.empty?
 
 
   # For each photo, get list of albums where this photo is contained. Recreate folder/album hierarchy as tags.
@@ -403,7 +415,7 @@ masters.each do |photo|
     h
   }
   albums = albumlist.collect{|k,v| v['path']}.uniq
-  puts "  AlbumTags: #{albums}".red
+  debug 2, "  AlbumTags: #{albums}".blue, true unless albums.empty?
   @keylist += albums
 
   # Get edits. Discard pseudo-Edits like RAW decoding and (perhaps?) rotations
@@ -426,7 +438,7 @@ masters.each do |photo|
   # Can it be more cryptic please? Who designs this crap anyway?
   crop_startx = crop_starty = crop_width = crop_height = crop_rotation_factor = 0
   if photo['version_number'].to_i > 0
-    print "  Edit: " #{edits.collect{|e| e['adj_name'] }.join(",").gsub(/RK|Operation/, '')}"
+    debug 3, '  Edit: ' #{edits.collect{|e| e['adj_name'] }.join(",").gsub(/RK|Operation/, '')}"
     edits.each do |edit|
       check = false
       edit_plist_hash = CFPropertyList.native_types(CFPropertyList::List.new(data: edit['data']).value)
@@ -445,21 +457,21 @@ masters.each do |photo|
           crop_starty = edit_plist_hash['$objects'][23]    # ystart: position from the bottom!
           crop_width  = edit_plist_hash['$objects'][22]    # xsize:  size in pixels from xstart
           crop_height = edit_plist_hash['$objects'][24]    # ysize:  size in pixels from ystart
-          print "Crop (#{crop_startx}x#{crop_starty}+#{crop_width}+#{crop_height}), "
+          debug 3, "Crop (#{crop_startx}x#{crop_starty}+#{crop_width}+#{crop_height}), ", false
         when 'RKStraightenCropOperation'
           check = edit_plist_hash['$objects'][9] == 'inputRotation'
           # factor examples: 1.04125 ~ 1.0° ; -19.0507 ~ -19,1°
           crop_rotation_factor = edit_plist_hash['$objects'][10]    # inputRotation in ° (degrees of 360°)
-          print "StraightenCrop (#{crop_rotation_factor}), "
+          debug 3, "StraightenCrop (#{crop_rotation_factor}), ", false
         when 'DGiOSEditsoperation'
           # TODO: image was edited in iOS which creates its own XMP file (with proprietary aas and crs tags).
-          print 'iOSEdits (???), '
+          debug 3, 'iOSEdits (???), ', false
         else
           # No region adjustment required for RawDecode, Whitebalance, ShadowHighlight, Exposure, NoiseReduction,
           # ProSharopen, iPhotoRedEye, Retouch, iPhotoEffects, and possibly others
       end
     end # edits.each
-    puts ""
+    debug 3, '', true
   end
 
 
@@ -545,14 +557,13 @@ masters.each do |photo|
     j.close
   end
 
-#  bar.inc
+  bar.inc unless ENV['DEBUG']
 end
 
 $missing.close
 if $problems
-  puts "\nOne or more files were missing from your iTunes library!"
-  puts File.read("#{outdir}/missing.log")
-  puts 'You can find this list in missing.log in the output directory.'
+  puts "\nOne or more files were missing from your iTunes library! See 'missing.log' in output directory."
+  debug 2, File.read("#{outdir}/missing.log"), true
 else
   File.unlink("#{outdir}/missing.log")
 end
@@ -560,7 +571,7 @@ end
 #
 # Stage 3: 
 #
-puts "\n\nPhase 3/3: Searching for lost masters"
+debug 1, "\n\nPhase 3/3: Searching for lost masters", true
 
 Find.find("#{iphotodir}/Masters").each do |file|
   ext = File.extname(file)
@@ -571,7 +582,7 @@ Find.find("#{iphotodir}/Masters").each do |file|
       destdir = File.dirname(destfile)
       FileUtils.mkpath(destdir) unless File.directory?(destdir)
       FileUtils.ln(file, destfile) unless File.exists?(destfile)
-      puts "  Found #{imgfile}"
+      debug 1, "  Found #{imgfile}", true
     end
   end
 end

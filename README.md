@@ -1,5 +1,6 @@
 # iphoto2xmp
 Export an Apple iPhoto image library to a new directory (using hardlinks) with all metadata saved in XMP sidecar files.
+Useful if you do not want your iPhoto library moved to a cloud-centric Photos app with less features.
 
 This script will export your Apple iPhoto library to a new directory structure (folders according to iPhoto "Events") using a standard metadata format (XMP sidecar files) wherever possible, so that you can import your image library to a different application (DAM = Digital Asset Management) and keep all your image metadata intact.
 
@@ -57,6 +58,7 @@ The script can currently export the following metadata:
  * export iPhoto's Slideshows, Calendars, Cards, Books at least as keyword collections (to identify which photos were used).
    => into "TopLevelKeepsakes/" tag hierarchy
  * export Smart Album rules into a separate text file so they can be recreated in the target application
+   (the structure is not decoded yet but can be looked at)
 
 ## Planned Features (TODO)
 The script *should* (at some point) also do the following.
