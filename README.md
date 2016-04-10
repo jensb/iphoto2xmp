@@ -24,6 +24,7 @@ EXIF and other data which was in the original images is of course preserved but 
     require 'time'              # required to convert integer timestamps
     require 'cfpropertylist'    # required to read binary plist blobs in SQLite3 dbs, 'plist' gem can't do this
     require 'erb'               # template engine
+    require 'pp'                # to pretty print PList extractions
 
 
 ## Usage
@@ -59,6 +60,19 @@ The script can currently export the following metadata:
    => into "TopLevelKeepsakes/" tag hierarchy
  * export Smart Album rules into a separate text file so they can be recreated in the target application
    (the structure is not decoded yet but can be looked at)
+ 
+
+## Post Mortem operations (Digikam specific)
+Some image properties cannot (properly) be converted into metadata suitable for XMP sidecar files. They must be
+patched into the target application's database after the import process. This requires exceuting `sqlite` scripts
+after starting Digikam at least once and letting it update the image database.
+
+iphoto2xmp writes several SQL scripts into the destination folder which can be executed against the `digikam4.db`
+SQLite database after the import. *Note that this should only be done with a backup, in case something goes wrong.*
+These include:
+
+ * Event notes (as Album descriptions): `event_notes.sql`
+ * Event minimum date and thumbnail (as Album date and thumbnail): `event_metadata.sql`
 
 ## Planned Features (TODO)
 The script *should* (at some point) also do the following.
@@ -68,7 +82,6 @@ Note: This is your chance to fork and create a pull request ;-)
  * use XMP DerivedFrom to automatically group "Original" and "Modified" photos from RKVersion.isOriginal und masterUuid
    This is not (currently) compatible with Digikam, but might be in the future so we'll use it.
    Optional: Additionally provide a SQL script that updates the Digikam SQLite db to group photos correctly.
- * export Event thumbnails
  * export an image's edit history at least as a descriptive text, perhaps as XMP (e.g. digikam:history tag)
  * correctly identify iOS Edit operations (which create their own proprietary XMP sidecar file)
 

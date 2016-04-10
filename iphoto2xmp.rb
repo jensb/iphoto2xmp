@@ -94,10 +94,14 @@ end
 # Correct to be able to use parsed date values.
 # Returns "YYYY-MM-DDTHH:MM:SS+NNNN" RFC 3339 string for XMP file.
 # TODO: read time zone from iPhoto database and do not assume GMT+1.
-def parse_date(intdate)
+def parse_date(intdate, strf=nil)
   return '' unless intdate
   diff = Time.parse('2001-01-01 +0100')
-  Time.at(intdate + diff.to_i).to_datetime.rfc3339
+  if strf
+    Time.at(intdate + diff.to_i).to_datetime.strftime(strf)
+  else
+    Time.at(intdate + diff.to_i).to_datetime.rfc3339
+  end
 end
 
 
@@ -175,6 +179,11 @@ masterhead, *masters = librarydb.execute2(
         ,v.name AS caption 
         ,f.name AS rollname
         ,f.modelId AS roll
+        ,f.minImageDate AS roll_min_image_date          -- will be written to SQL script to optionally update digikam4.db
+        ,f.maxImageDate AS roll_max_image_date
+        ,f.minImageTimeZoneName AS roll_min_image_tz
+        ,f.maxImageTimeZoneName AS roll_max_image_tz
+        ,f.posterVersionUuid AS poster_version_uuid     -- event thumbnail image uuid
         ,v.uuid AS uuid
         ,m.uuid AS master_uuid        -- master (unedited) image. Required for face rectangle conversion.
         ,v.versionNumber AS version_number  -- 1 if edited image, 0 if original image
@@ -243,8 +252,8 @@ debug 1, "Faces #{fnamelist.size}; ", false
 notehead, *notes = librarydb.execute2("SELECT RKNote.note AS note, RKFolder.name AS name
   FROM RKNote LEFT JOIN RKFolder on RKNote.attachedToUuid = RKFolder.uuid
   WHERE RKFolder.name IS NOT NULL AND RKFolder.name != '' ORDER BY RKFolder.modelId")
-File.open("#{outdir}/event_notes.csv", 'w') do |f|
-  f.puts("#{notes['name']}; #{notes['note']}")
+File.open("#{outdir}/event_notes.sql", 'w') do |f|
+  f.puts("UPDATE Albums SET caption='#{notes['note'].gsub(/'/, '"')}' WHERE relativePath LIKE '%/#{notes['name']}';")
 end unless notes.empty?
 debug 1, "Event Notes #{notes.size}).", true
 
@@ -302,6 +311,8 @@ $known = Hash.new
 done_xmp = Hash.new
 xmp_template = File.read("#{File.expand_path(File.dirname(__FILE__))}/iphoto2xmp_template.xmp.erb")
 
+eventmetafile = File.open("#{outdir}/event_metadata.sql", 'w')
+
 # iPhoto almost always stores a second version (Preview) of every image. In my case, out of 41000 images
 # only four had just a single version and one had six versions (print projects). So we can safely assume
 # one 'original' and one 'modified' version exist of each image and just loop through the master images.
@@ -340,9 +351,20 @@ masters.each do |photo|
     photo['raw_factor_w'] = 1
   end
 
+
+  # Collect roll/event metadata and write SQL scripts to update Digikam db after import.
+  # This data is not image specific but album/roll specific and thus cannot be written to XMP.
+  if photo['uuid'] == photo['poster_version_uuid']
+    subsearch = sprintf("SELECT i.id FROM Images i LEFT JOIN Albums a ON i.album=a.id
+      LEFT JOIN ImageComments c ON c.imageid=i.id WHERE c.comment='%s' AND a.relativePath LIKE '%%/%s' LIMIT 1",
+                      photo['caption'], photo['rollname'])
+    eventmetafile.printf("UPDATE Albums SET date='%s', icon=(%s) WHERE relativePath LIKE '%%/%s';\n",
+           parse_date(photo['roll_min_image_date'], '%Y-%m-%d'), subsearch, photo['rollname'])
+  end
+
+
   @date = parse_date(photo['date'])
   @date_master = parse_date(photo['datem'])
-  debug 1, "#{photo['id']}(#{photo['master_id']}): #{photo['caption']}, #{photo['uuid'][0..5]}…/#{photo['master_uuid'][0..5]}…, c:#{@date_master} / e:#{@date}".bold, true
   if curr_roll != photo['rollname']
     # write debug output if required
     if p = photo['poster_version_uuid']
@@ -571,6 +593,8 @@ masters.each do |photo|
 
   bar.inc unless ENV['DEBUG']
 end
+
+eventmetafile.close
 
 $missing.close
 if $problems
