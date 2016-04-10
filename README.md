@@ -46,20 +46,19 @@ The script can currently export the following metadata:
  * Keywords (iPhoto does not use hierarchical tags)
  * Event names (used for the folder structure, not exported into XMP)
  * GPS coordinates
- * GPS coordinate names (Country, City, etc.). These are in Properties.apdb::RKPlace, RKPlaceName
  * Edited and original images, edit operation (eg. "Crop", "WhiteBalance", ...)
  * Face names and face coordinates
  * Face names and face coordinates in rotated or cropped images
    (TODO: still buggy if the image had EXIF rotation flags set since then iPhoto saves weird position values)
  * Hidden, Starred, Flagged, Editable, Original, isInTrash flags (as tags)
  * iPhoto and iOS edit operations as additional *.plist sidecar files (so far, not all are decoded)
- * export iPhoto (before 9.1(?)) Event notes (to a text file).
- * export Albums as keyword collections (Library:RKFolder/RKAlbum, Library:RKAlbumVersion)
-   => into "TopLevelAlbums/" tag hierarchy
- * export iPhoto's Slideshows, Calendars, Cards, Books at least as keyword collections (to identify which photos were used).
-   => into "TopLevelKeepsakes/" tag hierarchy
- * export Smart Album rules into a separate text file so they can be recreated in the target application
+ * iPhoto (before 9.1(?)) Event notes (to a text file).
+ * Albums as tag collections (Library:RKFolder/RKAlbum, Library:RKAlbumVersion) into "TopLevelAlbums/" tag hierarchy
+ * iPhoto's Slideshows, Calendars, Cards, Books as tag collections (to identify which photos were used) into "TopLevelKeepsakes/" tag hierarchy
+ * Smart Album rules into a separate text file so they can be recreated in the target application
    (the structure is not decoded yet but can be looked at)
+ * Event notes into a SQL script that can be run against the digikam4.db (using sqlite) to recreate them as 
+   Album descriptions
  
 
 ## Post Mortem operations (Digikam specific)
@@ -78,10 +77,13 @@ These include:
 The script *should* (at some point) also do the following.
 Note: This is your chance to fork and create a pull request ;-)
 
- * Fix face coordinates for EXIF rotated images (see above)
+ * Export iPhoto "hidden" status as group commands so only the first hidden photo in each album is shown
+   (hidden photos are already tagged accordingly so you can do anything you want with them)
  * use XMP DerivedFrom to automatically group "Original" and "Modified" photos from RKVersion.isOriginal und masterUuid
    This is not (currently) compatible with Digikam, but might be in the future so we'll use it.
    Optional: Additionally provide a SQL script that updates the Digikam SQLite db to group photos correctly.
+ * GPS coordinate names (Country, City, etc.). These are in Properties.apdb::RKPlace, RKPlaceName
+ * Fix face coordinates for EXIF rotated images (see above)
  * export an image's edit history at least as a descriptive text, perhaps as XMP (e.g. digikam:history tag)
  * correctly identify iOS Edit operations (which create their own proprietary XMP sidecar file)
 
