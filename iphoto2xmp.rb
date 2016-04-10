@@ -295,8 +295,7 @@ albumdata.each do |d|
   end
 end
 
-
-
+curr_roll = nil
 
 ###################################################################################################
 # Stage 2: Big loop through all photos
