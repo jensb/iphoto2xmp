@@ -42,15 +42,15 @@ The script can currently export the following metadata:
  * All EXIF data within the original image (preserved inside the files)
  * Captions / Titles
  * Descriptions
- * Keywords (iPhoto does not use hierarchical keywords)
+ * Keywords (iPhoto does not use hierarchical tags)
  * Event names (used for the folder structure, not exported into XMP)
  * GPS coordinates
  * GPS coordinate names (Country, City, etc.). These are in Properties.apdb::RKPlace, RKPlaceName
  * Edited and original images, edit operation (eg. "Crop", "WhiteBalance", ...)
  * Face names and face coordinates
  * Face names and face coordinates in rotated or cropped images
-   (still buggy if the image had EXIF rotation flags set since then iPhoto saves weird position values)
- * Hidden, Starred, Flagged, Editable, Original, isInTrash flags (as keywords)
+   (TODO: still buggy if the image had EXIF rotation flags set since then iPhoto saves weird position values)
+ * Hidden, Starred, Flagged, Editable, Original, isInTrash flags (as tags)
  * iPhoto and iOS edit operations as additional *.plist sidecar files (so far, not all are decoded)
  * export iPhoto (before 9.1(?)) Event notes (to a text file).
  * export Albums as keyword collections (Library:RKFolder/RKAlbum, Library:RKAlbumVersion)
@@ -75,6 +75,7 @@ Note: This is your chance to fork and create a pull request ;-)
 
 ## Orphans, Missing files
 The script will additionally identify
+
  * orphaned images in your iPhoto Library (ie. images which are referenced nowhere) and
  * missing images (images which are in the database but have no associated file).
 
@@ -82,7 +83,7 @@ and optionally copy orphaned images to the export root directory
 
 
 ## Keywords
-iPhoto does not use hierarchical keywords, but some users might have created a pseudo-hierarchical structure in iPhoto using dots or slashes, naming keywords like "Places/Ottawa" or "People/John Doe". The keywords are converted verbatim, so it is up to your new DAM to make sense of these keywords. Or fork, write a conversion, and create a pull request! ;-)
+iPhoto does not use hierarchical tags, but some users might have created a pseudo-hierarchical structure in iPhoto using dots or slashes, naming tags like "Places/Ottawa" or "People/John Doe". The tags are converted verbatim, so it is up to your new DAM to make sense of these tags. Or fork, write a conversion, and create a pull request! ;-)
 
 
 ## iPhoto Library SQlite3 structure
