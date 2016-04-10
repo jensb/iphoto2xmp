@@ -63,7 +63,7 @@ end
 # Link photo (original or modified version) to destination directory
 # TODO: prevent duplicate links from the same original photo.
 def link_photo(basedir, outdir, photo, imgfile, origfile)
-  imgpath  = "#{basedir}/#{imgfile}"
+  imgpath  = "#{basedir}/#{imgfile}"  # source image path
   destpath = photo['rollname']  ?  ("#{outdir}/#{photo['rollname']}/#{File.basename(imgpath)}")  :  "#{outdir}#{imgfile}"
   destdir  = File.dirname(destpath)
   if origfile and File.exist?(destpath) and File.size?(imgpath) != File.size?("#{basedir}/#{origfile}")
@@ -159,11 +159,11 @@ def calc_faces(faces, mwidth, mheight, frot=0, raw_factor_x=1, raw_factor_y=1)
 end
 
 
-##########################################################################
+###################################################################################################
 # Stage 1: Get main image info.
 # Cannot use AlbumData.xml because a lot of info is not listed at all in AlbumData.xml but should be exported.
 # Examples: keywords, hidden photos, trashcan, location *names*, ...
-##########################################################################
+###################################################################################################
 debug 1, 'Phase 1: Reading iPhoto SQLite data (Records: Library '.bold, false
 librarydb = SQLite3::Database.new("#{iphotodir}/Database/apdb/Library.apdb")
 librarydb.results_as_hash = true  # gibt [{"modelId"=>1, "uuid"=>"SwX6W9...", "name"=>".."
@@ -178,7 +178,6 @@ masterhead, *masters = librarydb.execute2(
         ,v.uuid AS uuid
         ,m.uuid AS master_uuid        -- master (unedited) image. Required for face rectangle conversion.
         ,v.versionNumber AS version_number  -- 1 if edited image, 0 if original image
-     -- ,v.masterUuid AS master_uuid  -- master (unedited) image. Required for face rectangle conversion.
         ,v.mainRating AS rating       -- TODO: Rating is always applied to the master image, not the edited one
         ,m.type AS mediatype          -- IMGT, VIDT
         ,m.imagePath AS imagepath     -- 2015/04/27/20150427-123456/FOO.RW2, yields Masters/$imagepath and
@@ -276,7 +275,7 @@ albumhead, *albumdata = librarydb.execute2(
      AND uuid NOT LIKE '%Album%'")
 albumqdir = "#{outdir}/00_AlbumQueryData"
 File.directory?(albumqdir) || Dir.mkdir(albumqdir)
-debug 2, "Albumdata: writing #{albumdata.collect{|a| a['name'] }.join(', ')}".red, true
+debug 2, "Albumdata: writing #{albumdata.collect{|a| a['name'] }.join(', ')}", true
 albumdata.each do |d|
   next if !d['name'] or d['name'] == ''
   ['filterData', 'queryData', 'viewData'].each do |datakey|
@@ -288,9 +287,11 @@ albumdata.each do |d|
 end
 
 
-#
+
+
+###################################################################################################
 # Stage 2: Big loop through all photos
-#
+###################################################################################################
 basedir = iphotodir
 debug 1, "Phase 2/3: Exporting iPhoto archive\n  from #{basedir}\n  to   #{outdir}".bold, true
 bar = ProgressBar.new('Exporting', masters.length) unless ENV['DEBUG']   # only if DEBUG isn't set
@@ -342,6 +343,17 @@ masters.each do |photo|
   @date = parse_date(photo['date'])
   @date_master = parse_date(photo['datem'])
   debug 1, "#{photo['id']}(#{photo['master_id']}): #{photo['caption']}, #{photo['uuid'][0..5]}…/#{photo['master_uuid'][0..5]}…, c:#{@date_master} / e:#{@date}".bold, true
+  if curr_roll != photo['rollname']
+    # write debug output if required
+    if p = photo['poster_version_uuid']
+      debug 1, "EVENT: #{photo['rollname']} (thumb: #{p[0..6]}…): #{parse_date(photo['roll_min_image_date'], '%Y-%m-%d')} .. #{parse_date(photo['roll_max_image_date'], '%Y-%m-%d')}".bold, true
+    else
+      debug 1, "EVENT: #{photo['rollname'] || "(NO ROLL NAME)"} (?)".bold, true
+    end
+    curr_roll = photo['rollname']
+  end
+  str = " #{photo['id']}(#{photo['master_id']}): #{File.basename(photo['imagepath'])}\t#{photo['caption']}\t#{photo['rating']}* #{photo['uuid'][0..5]}…/#{photo['master_uuid'][0..5]}…\tc:#{@date_master} e:#{@date != @date_master ? @date : '='}"
+  debug 1, (ENV['DEBUG'].to_i > 1 ? str.bold : str), true
   debug 2, "  Desc: #{photodescs[photo['id'].to_i]}".green, true  if photodescs[photo['id'].to_i]
   debug 2, "  Orig: #{photo['master_height']}x#{photo['master_width']} (#{'%.4f' % photo['raw_factor_h']}/#{'%.4f' % photo['raw_factor_w']}), #{origpath} (#{File.exist?("#{basedir}/#{origpath}") ? 'OK' : 'missing'.red})", true
   if photo['face_rotation'].to_i != 0
@@ -568,9 +580,11 @@ else
   File.unlink("#{outdir}/missing.log")
 end
 
-#
-# Stage 3: 
-#
+
+
+###################################################################################################
+# Stage 3: Search for orphans.
+###################################################################################################
 debug 1, "\n\nPhase 3/3: Searching for lost masters", true
 
 Find.find("#{iphotodir}/Masters").each do |file|
