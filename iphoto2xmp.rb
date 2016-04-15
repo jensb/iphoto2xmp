@@ -46,6 +46,7 @@ class String
   def green;"\e[32m#{self}\e[0m" end
   def yellow;"\e[33m#{self}\e[0m" end
   def blue; "\e[34m#{self}\e[0m" end
+  def cyan; "\e[36m#{self}\e[0m" end
 end
 
 
@@ -63,11 +64,12 @@ end
 # Link photo (original or modified version) to destination directory
 # TODO: prevent duplicate links from the same original photo.
 def link_photo(basedir, outdir, photo, imgfile, origfile)
-  imgpath  = "#{basedir}/#{imgfile}"  # source image path
-  destpath = photo['rollname']  ?  ("#{outdir}/#{photo['rollname']}/#{File.basename(imgpath)}")  :  "#{outdir}#{imgfile}"
+  imgpath  = "#{basedir}/#{imgfile}"  # source image path, absolute
+  destpath = photo['rollname']  ?  "#{outdir}/#{photo['rollname']}/#{File.basename(imgpath)}"
+                                :  "#{outdir}#{imgfile}"
   destdir  = File.dirname(destpath)
-  if origfile and File.exist?(destpath) and File.size?(imgpath) != File.size?("#{basedir}/#{origfile}")
-    # assume modified version has the same filename -> append "_v1" to basename to avoid overwriting
+  # if origfile differs from imgfile, append "_v1" to imgfiles's basename to avoid overwriting
+  if origfile and File.exist?(destpath) and File.size(imgpath) != File.size(destpath)
     destpath.sub!(/\.([^.]*)$/, '_v1.\1')
   end
   File.directory?(destdir) || FileUtils.mkpath(destdir)
@@ -86,7 +88,7 @@ def link_photo(basedir, outdir, photo, imgfile, origfile)
   # Work out the XMP sidecar location
   # Without extension: File.dirname(destpath) + '/' + File.basename(destpath, File.extname(destpath)) + ".xmp"
   # With extension:
-  "#{destpath}.xmp"
+  ["#{destpath}.xmp", destpath.sub(/^#{outdir}\//, '')]
 end
 
 
@@ -218,8 +220,6 @@ masterhead, *masters = librarydb.execute2(
  ")
 debug 1, "#{masters.count}; ", false
 
-# TODO: Add iPhoto <9.1(?) type notes to Events. Only in main iPhoto Library, not in test library.
-notehead, notes = librarydb.execute2('SELECT * from RKNote')
 
 propertydb = SQLite3::Database.new("#{iphotodir}/Database/apdb/Properties.apdb")
 propertydb.results_as_hash = true
@@ -272,11 +272,11 @@ folderhead, *folderdata = librarydb.execute2(
 folderlist  = folderdata.inject({}) {|h,folder| h[folder['modelId'].to_i] = folder; h }
 foldernames = folderdata.inject({}) {|h,folder| h[folder['modelId'].to_s] = folder['name']; h }
 folderlist.each {|k,v| folderlist[k]['folderPath'].gsub!(/\d*/, foldernames).gsub!(/^\/(.*)\/$/, '\1') }
-debug 1, "foldernames = #{foldernames.inspect}", true
-debug 1, "folderlist = #{folderlist.collect{|k,v| v['folderPath']}.join(', ')}", true
+debug 2, "foldernames = #{foldernames.inspect}", true
+debug 2, "folderlist = #{folderlist.collect{|k,v| v['folderPath']}.join(', ')}", true
 
 
-
+# Export album metadata (mostly binary PLists) but so far nothing is done with it except save it.
 albumhead, *albumdata = librarydb.execute2(
  "SELECT modelId, uuid, name, folderUuid, filterData, queryData, viewData
     FROM RKAlbum
@@ -311,6 +311,7 @@ done_xmp = Hash.new
 xmp_template = File.read("#{File.expand_path(File.dirname(__FILE__))}/iphoto2xmp_template.xmp.erb")
 
 eventmetafile = File.open("#{outdir}/event_metadata.sql", 'w')
+group_mod_data = []
 
 # iPhoto almost always stores a second version (Preview) of every image. In my case, out of 41000 images
 # only four had just a single version and one had six versions (print projects). So we can safely assume
@@ -318,22 +319,22 @@ eventmetafile = File.open("#{outdir}/event_metadata.sql", 'w')
 masters.each do |photo|
 
   origpath = "Masters/#{photo['imagepath']}"
-  
-  # doesn't work, various info in RKVersion is different (eg. caption)
-  # next if $known["#{basedir}/#{origpath}"]
+
+  # $known doesn't work here, various info in RKVersion is different (eg. caption)
+  next if $known["#{basedir}/#{origpath}"]
   # Preview can be mp4, mov, jpg, whatever - but not RAW/RW2, it seems.
   # Preview has jpg or JPG extension. Try both.
   modpath = "Previews/#{File.dirname(photo['imagepath'])}/#{photo['uuid']}/#{File.basename(photo['imagepath']).gsub(/PNG$|JPG$|RW2$/, 'jpg')}"
   if photo['mediatype'] != 'VIDT' and !File.exist?("#{basedir}/#{modpath}")
     modpath = modpath.sub(/jpg$/, 'JPG')
   end
-  origxmppath = link_photo(basedir, outdir, photo, origpath, nil)
+  origxmppath, origdestpath = link_photo(basedir, outdir, photo, origpath, nil)
   next if done_xmp[origxmppath]    # do not overwrite master XMP twice
   # link_photo needs origpath to do size comparison for modified images
   # only perform link_photo for "non-videos" and when a modified image should exist
   # since iPhoto creates "link mp4" files without real video content for "modified" videos (useless)
   if photo['version_number'].to_i > 0 and photo['mediatype'] != 'VIDT'
-    modxmppath  = link_photo(basedir, outdir, photo, modpath, origpath)
+    modxmppath, moddestpath = link_photo(basedir, outdir, photo, modpath, origpath)
   end
 
   # FIXME: Fix size of RW2 files (incorrectly set to 3776x2520, but Digikam sees 3792x2538) (Panasonic LX3)
@@ -362,6 +363,17 @@ masters.each do |photo|
   end
 
 
+  # Group modified and original images just like in iPhoto.
+  # Images have to be identified by (possibly modified) filename and album path since the XMP UUID is not kept
+  if modxmppath
+    origsub = sprintf("SELECT i.id FROM Images i LEFT JOIN Albums a ON i.album=a.id WHERE i.name='%s' AND a.relativePath LIKE '%%/%s'", File.basename(origxmppath, '.*'), photo['rollname'])
+    mod_sub = sprintf("SELECT i.id FROM Images i LEFT JOIN Albums a ON i.album=a.id WHERE i.name='%s' AND a.relativePath LIKE '%%/%s'", File.basename(modxmppath, '.*'), photo['rollname'])
+    # last parameter: 1 = versioned groups,  2 = normal groups. Here we want 1.
+    group_mod_data << sprintf("((%s), (%s), 1)", mod_sub, origsub)
+    group_mod_data << sprintf("((%s), (%s), 2)", origsub, mod_sub)
+  end
+
+
   @date = parse_date(photo['date'])
   @date_master = parse_date(photo['datem'])
   if curr_roll != photo['rollname']
@@ -377,12 +389,14 @@ masters.each do |photo|
   debug 1, (ENV['DEBUG'].to_i > 1 ? str.bold : str), true
   debug 2, "  Desc: #{photodescs[photo['id'].to_i]}".green, true  if photodescs[photo['id'].to_i]
   debug 2, "  Orig: #{photo['master_height']}x#{photo['master_width']} (#{'%.4f' % photo['raw_factor_h']}/#{'%.4f' % photo['raw_factor_w']}), #{origpath} (#{File.exist?("#{basedir}/#{origpath}") ? 'OK' : 'missing'.red})", true
+  debug 3, "     => #{origdestpath}".cyan, true
   if photo['face_rotation'].to_i != 0
     debug 2, "  Flip: #{photo['face_rotation']}°".blue, true
   end
   if modxmppath    # modified version *should* exist
     debug 2, "  Mod : #{photo['processed_height']}x#{photo['processed_width']}, #{modpath} ", false
     debug 2, File.exist?("#{basedir}/#{modpath}") ? '(true)' : '(missing)'.red, true
+    debug 3, "     => #{moddestpath}".cyan, true
   end
 
   #
@@ -595,9 +609,15 @@ end
 
 eventmetafile.close
 
+# Write grouping information to SQL file for Digikam.
+group_mod_file = File.open("#{outdir}/group_modified.sql", 'w') do |f|
+  f.printf("INSERT OR IGNORE INTO ImageRelations (subject, object, type) VALUES %s ;", group_mod_data.join(",\n"))
+end
+
+
 $missing.close
 if $problems
-  puts "\nOne or more files were missing from your iTunes library! See 'missing.log' in output directory."
+  puts "\nOne or more files were missing from your iPhoto library! See 'missing.log' in output directory."
   debug 2, File.read("#{outdir}/missing.log"), true
 else
   File.unlink("#{outdir}/missing.log")
