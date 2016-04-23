@@ -31,6 +31,9 @@ EXIF and other data which was in the original images is of course preserved but 
 
     ruby iphoto2xmp.rb "~/Pictures/My iPhoto library" "~/Pictures/Export Here"
 
+Use a `DEBUG` environment variable to print out debugging information. For example, `DEBUG=1` will print out basic information about all found images. `DEBUG=3` will print out all metadata found in all images including faces.
+
+    DEBUG=1 ruby iphoto2xmp.rb "~/Pictures/My iPhoto library" "~/Pictures/Export Here"
 
 ## Credits
 The original idea was taken from https://gist.github.com/lpar/2191225, but the script has been heavily modified to access more iPhoto metadata (not just AlbumData.xml), distinguish between original and modified photos, and not rely on exiftool. This also brings a huge speed improvement.
@@ -61,7 +64,7 @@ The script can currently export the following metadata:
 ## Post Mortem operations (Digikam 4.14 specific)
 Some image properties cannot (properly) be converted into metadata suitable for XMP sidecar files. They must be
 patched into the target application's database after the import process. This requires exceuting `sqlite` scripts
-after starting Digikam at least once and letting it update the image database.
+**after starting Digikam at least once** and letting it update the image database.
 
 iphoto2xmp writes several SQL scripts into the destination folder which can be executed against the `digikam4.db`
 SQLite database after the import. *Note that this should only be done with a backup, in case something goes wrong.*
@@ -71,6 +74,11 @@ These might include (depending on what features were used in iPhoto):
  * Event minimum date and thumbnail (as Album date and thumbnail): `event_metadata.sql`
  * Group original & modified images (as groups & versions): `grouped_images.sql`
 
+Usage for each file (grouped_images.sql as an example):
+
+    sqlite3 ~/Pictures/digikam4.db < grouped_images.sql
+
+If there is no output, everything went fine. If there is a lot of output, there is a problem with the SQL. Post the output as an issue here on Github.
 
 ## Planned Features (TODO)
 The script *should* (at some point) also do the following.
