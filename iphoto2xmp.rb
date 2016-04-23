@@ -5,7 +5,7 @@
 # with all metadata saved in XMP sidecar files.
 #
 # Requires:
-# * Tested with Ruby 2.1 and 2.2, not below. Please report errors.
+# * Tested with Ruby 1.9, not above. Please report errors.
 # * gems: see below 'require' list
 #
 # Usage:
