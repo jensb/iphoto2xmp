@@ -17,7 +17,7 @@ EXIF and other data which was in the original images is of course preserved but 
 
 ## Requirements
 
-    require 'progressbar'       # currently disabled, will be enabled when debug output has been removed
+    require 'progressbar'       # required for eye candy during conversion
     require 'find'              # required to find orphaned images
     require 'fileutils'         # required to move and link files around 
     require 'sqlite3'           # required to access iPhoto database

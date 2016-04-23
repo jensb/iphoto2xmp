@@ -13,20 +13,14 @@
 #
 ##########################################################################
 
-require 'progressbar'       # just eye candy
-require 'find'              # duh
-require 'fileutils'
-require 'sqlite3'           # duh
+require 'progressbar'       # required for eye candy during conversion
+require 'find'              # required to find orphaned images
+require 'fileutils'         # required to move and link files around
+require 'sqlite3'           # required to access iPhoto database
 require 'time'              # required to convert integer timestamps
 require 'cfpropertylist'    # required to read binary plist blobs in SQLite3 dbs, 'plist' gem can't do this
 require 'erb'               # template engine
 require 'pp'                # to pretty print PList extractions
-
-EXIFTOOL = `which exiftool`.chop
-if EXIFTOOL == ''
-  puts "Can't find exiftool in PATH. You can obtain it from\n  http://owl.phy.queensu.ca/~phil/exiftool/"
-  exit 1
-end
 
 iphotodir = ARGV[0]
 outdir = ARGV[1]
