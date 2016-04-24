@@ -66,7 +66,7 @@ def link_photo(basedir, outdir, photo, imgfile, origfile)
                                 :  "#{outdir}#{imgfile}"
   destdir  = File.dirname(destpath)
   # if origfile differs from imgfile, append "_v1" to imgfiles's basename to avoid overwriting
-  if origfile and File.exist?(destpath) and File.size(imgpath) != File.size(destpath)
+  if origfile and File.exist?(imgpath) and File.exist?(destpath) and File.size(imgpath) != File.size(destpath)
     destpath.sub!(/\.([^.]*)$/, '_v1.\1')
   end
   File.directory?(destdir) || FileUtils.mkpath(destdir)
@@ -484,7 +484,7 @@ masters.each do |photo|
   # Can it be more cryptic please? Who designs this crap anyway?
   crop_startx = crop_starty = crop_width = crop_height = crop_rotation_factor = 0
   if photo['version_number'].to_i > 0
-    debug 3, '  Edit: ' #{edits.collect{|e| e['adj_name'] }.join(",").gsub(/RK|Operation/, '')}"
+    debug 3, "  Edit:  #{edits.collect{|e| e['adj_name'] }.join(",").gsub(/RK|Operation/, '')}", true
     edits.each do |edit|
       check = false
       edit_plist_hash = CFPropertyList.native_types(CFPropertyList::List.new(data: edit['data']).value)
