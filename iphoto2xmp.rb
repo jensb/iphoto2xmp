@@ -44,6 +44,7 @@ class String
   def yellow;"\e[33m#{self}\e[0m" end
   def blue; "\e[34m#{self}\e[0m" end
   def cyan; "\e[36m#{self}\e[0m" end
+  def sqlclean; self.gsub(/\'/, "''") end
 end
 
 
@@ -251,7 +252,7 @@ notehead, *notes = librarydb.execute2("SELECT RKNote.note AS note, RKFolder.name
   WHERE RKFolder.name IS NOT NULL AND RKFolder.name != '' ORDER BY RKFolder.modelId")
 File.open("#{outdir}/event_notes.sql", 'w') do |f|
   notes.each do |note|
-    f.puts("UPDATE Albums SET caption='#{note['note'].gsub(/'/, '"')}' WHERE relativePath LIKE '%/#{note['name']}';")
+    f.puts("UPDATE Albums SET caption='#{note['note'].sqlclean}' WHERE relativePath LIKE '%/#{note['name'].sqlclean}';")
   end
 end unless notes.empty?
 debug 1, "Event Notes #{notes.size}).", true
@@ -356,17 +357,17 @@ masters.each do |photo|
   if photo['uuid'] == photo['poster_version_uuid']
     subsearch = sprintf("SELECT i.id FROM Images i LEFT JOIN Albums a ON i.album=a.id
       LEFT JOIN ImageComments c ON c.imageid=i.id WHERE c.comment='%s' AND a.relativePath LIKE '%%/%s' LIMIT 1",
-                      photo['caption'], photo['rollname'])
+                      photo['caption'].sqlclean, photo['rollname'].sqlclean)
     eventmetafile.printf("UPDATE Albums SET date='%s', icon=(%s) WHERE relativePath LIKE '%%/%s';\n",
-           parse_date(photo['roll_min_image_date'], '%Y-%m-%d'), subsearch, photo['rollname'])
+           parse_date(photo['roll_min_image_date'], '%Y-%m-%d'), subsearch, photo['rollname'].sqlclean)
   end
 
 
   # Group modified and original images just like in iPhoto.
   # Images have to be identified by (possibly modified) filename and album path since the XMP UUID is not kept
   if modxmppath
-    origsub = sprintf("SELECT i.id FROM Images i LEFT JOIN Albums a ON i.album=a.id WHERE i.name='%s' AND a.relativePath LIKE '%%/%s'", File.basename(origxmppath, '.*'), photo['rollname'])
-    mod_sub = sprintf("SELECT i.id FROM Images i LEFT JOIN Albums a ON i.album=a.id WHERE i.name='%s' AND a.relativePath LIKE '%%/%s'", File.basename(modxmppath, '.*'), photo['rollname'])
+    origsub = sprintf("SELECT i.id FROM Images i LEFT JOIN Albums a ON i.album=a.id WHERE i.name='%s' AND a.relativePath LIKE '%%/%s'", File.basename(origxmppath, '.*').sqlclean, photo['rollname'].sqlclean)
+    mod_sub = sprintf("SELECT i.id FROM Images i LEFT JOIN Albums a ON i.album=a.id WHERE i.name='%s' AND a.relativePath LIKE '%%/%s'", File.basename(modxmppath, '.*').sqlclean, photo['rollname'].sqlclean)
     # last parameter: 1 = versioned groups,  2 = normal groups. Here we want 1.
     group_mod_data << sprintf("((%s), (%s), 1)", mod_sub, origsub)
     group_mod_data << sprintf("((%s), (%s), 2)", origsub, mod_sub)
