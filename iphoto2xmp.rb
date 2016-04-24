@@ -250,7 +250,9 @@ notehead, *notes = librarydb.execute2("SELECT RKNote.note AS note, RKFolder.name
   FROM RKNote LEFT JOIN RKFolder on RKNote.attachedToUuid = RKFolder.uuid
   WHERE RKFolder.name IS NOT NULL AND RKFolder.name != '' ORDER BY RKFolder.modelId")
 File.open("#{outdir}/event_notes.sql", 'w') do |f|
-  f.puts("UPDATE Albums SET caption='#{notes['note'].gsub(/'/, '"')}' WHERE relativePath LIKE '%/#{notes['name']}';")
+  notes.each do |note|
+    f.puts("UPDATE Albums SET caption='#{note['note'].gsub(/'/, '"')}' WHERE relativePath LIKE '%/#{note['name']}';")
+  end
 end unless notes.empty?
 debug 1, "Event Notes #{notes.size}).", true
 
