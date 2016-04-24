@@ -26,6 +26,10 @@ EXIF and other data which was in the original images is of course preserved but 
     require 'erb'               # template engine
     require 'pp'                # to pretty print PList extractions
 
+For Ubuntu and Ruby 2.2, this means e.g.
+
+    sudo apt-get install ruby2.2 ruby2.2-dev libsqlite3-dev
+    sudo gem2.2 install sqlite3 progressbar CFPropertyList
 
 ## Usage
 

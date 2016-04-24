@@ -5,11 +5,14 @@
 # with all metadata saved in XMP sidecar files.
 #
 # Requires:
-# * Tested with Ruby 1.9, not above. Please report errors.
+# * Tested with Ruby 1.9, 2.1 and 2.2 on Ubuntu 14.04. Please report errors.
 # * gems: see below 'require' list
 #
 # Usage:
 #   ruby iphoto2xmp.rb "~/Pictures/My iPhoto library" "~/Pictures/Export Here"
+# or
+#   DEBUG=x ruby iphoto2xmp.rb "~/Pictures/My iPhoto library" "~/Pictures/Export Here"
+# where "x" is 1, 2, or 3 (higher = more output)
 #
 ##########################################################################
 
