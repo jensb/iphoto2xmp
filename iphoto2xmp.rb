@@ -430,6 +430,8 @@ masters.each do |photo|
     @gpscountryname = ''
     @gpslocation = p['defaultName']
     @gps3lettercountrycode = ''
+  else
+    @gpslocation = nil
   end
 
 
