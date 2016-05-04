@@ -612,8 +612,12 @@ end
 eventmetafile.close
 
 # Write grouping information to SQL file for Digikam.
+# Group data into blocks of 1000 inserts otherwise sqlite will barf.
 group_mod_file = File.open("#{outdir}/group_modified.sql", 'w') do |f|
-  f.printf("INSERT OR IGNORE INTO ImageRelations (subject, object, type) VALUES %s ;", group_mod_data.join(",\n"))
+  group_mod_data.each_slice(100) {|batch|
+    f.printf("INSERT OR REPLACE INTO ImageRelations (subject, object, type) VALUES %s ;", batch.join(",\n"))
+    f.printf("\n\n");
+  }
 end
 
 
