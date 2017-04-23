@@ -289,7 +289,8 @@ albumdata.each do |d|
   next if !d['name'] or d['name'] == ''
   ['filterData', 'queryData', 'viewData'].each do |datakey|
     next if d[datakey].nil?
-    File.open("#{albumqdir}/#{d['name']}.#{datakey}", 'w') do |j|
+    albumqname = d['name'].gsub(/[<>|\/;:\*\"]/, '-')
+    File.open("#{albumqdir}/#{albumqname}.#{datakey}", 'w') do |j|
       PP.pp(CFPropertyList.native_types(CFPropertyList::List.new(data: d[datakey]).value), j)
     end
   end
