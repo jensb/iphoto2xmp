@@ -52,6 +52,7 @@ The script can currently export the following metadata:
  * Descriptions
  * Keywords (iPhoto does not use hierarchical tags)
  * Event names (used for the folder structure, not exported into XMP)
+   Note: photos in a "New Event" (i.e. just imported into iPhoto) will be imported into the output root directory.
  * GPS coordinates
  * Edited and original images, edit operation (eg. "Crop", "WhiteBalance", ...)
  * Face names and face coordinates
