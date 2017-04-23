@@ -37,24 +37,24 @@
    exif:GPSVersionID="2.0.0.0"
    video:DateTimeOriginal="<%= @date_master %>"
    video:ModificationDate="<%= @date %>"
-<% if @latitude %>
+<% unless @latitude.empty? %>
    exif:GPSLatitude="<%= @latitude %>"
    exif:GPSLongitude="<%= @longitude %>"
    exif:GPSMapDatum="WGS-84"
 <% end %>
-<% if @gpscity %>
+<% unless @gpscity.empty? %>
    photoshop:City="<%= @gpscity %>"
 <% end %>
-<% if @gpsstate %>
+<% unless @gpsstate.empty? %>
    photoshop:State="<%= @gpsstate %>"
 <% end %>
-<% if @gpscountryname %>
+<% unless @gpscountryname.empty? %>
    photoshop:Country="<%= @gpscountryname %>"
 <% end %>
-<% if @gpslocation %>
+<% unless @gpslocation.empty? %>
    Iptc4xmpCore:Location="<%= @gpslocation %>"
 <% end %>
-<% if @gps3lettercountrycode %>
+<% unless @gps3lettercountrycode.empty? %>
    Iptc4xmpCore:CountryCode="<%= @gps3lettercountrycode %>"
 <% end %>
   >
