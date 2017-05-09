@@ -22,8 +22,8 @@
    xmp:CreatorTool="iphoto2xmp.rb by Jens Benecke"
    xmp:MetadataDate="<%= @date_meta %>"
    xmp:Rating="<%= @rating %>"
-   xmp:ModifyDate="<%= @date %>"
-   xmp:CreateDate="<%= @date_master %>"
+   xmp:CreateDate="<%= @date_cr %>"
+   xmp:ModifyDate="<%= @date_mod %>"
    acdsee:rating="<%= @rating %>"
    acdsee:caption="<%= @caption %>"
    acdsee:notes="<%= @description %>"
@@ -37,24 +37,24 @@
    exif:GPSVersionID="2.0.0.0"
    video:DateTimeOriginal="<%= @date_master %>"
    video:ModificationDate="<%= @date %>"
-<% unless @latitude.empty? %>
+<% if !!@latitude %>
    exif:GPSLatitude="<%= @latitude %>"
    exif:GPSLongitude="<%= @longitude %>"
    exif:GPSMapDatum="WGS-84"
 <% end %>
-<% unless @gpscity.empty? %>
+<% if !!@gpscity %>
    photoshop:City="<%= @gpscity %>"
 <% end %>
-<% unless @gpsstate.empty? %>
+<% if !!@gpsstate %>
    photoshop:State="<%= @gpsstate %>"
 <% end %>
-<% unless @gpscountryname.empty? %>
+<% if !!@gpscountryname %>
    photoshop:Country="<%= @gpscountryname %>"
 <% end %>
-<% unless @gpslocation.empty? %>
+<% if !!@gpslocation %>
    Iptc4xmpCore:Location="<%= @gpslocation %>"
 <% end %>
-<% unless @gps3lettercountrycode.empty? %>
+<% if !!@gps3lettercountrycode %>
    Iptc4xmpCore:CountryCode="<%= @gps3lettercountrycode %>"
 <% end %>
   >

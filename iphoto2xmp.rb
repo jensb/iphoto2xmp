@@ -94,14 +94,14 @@ end
 # Correct to be able to use parsed date values.
 # Returns "YYYY-MM-DDTHH:MM:SS+NNNN" RFC 3339 string for XMP file.
 # TODO: read time zone from iPhoto database and do not assume GMT+1.
-def parse_date(intdate, strf=nil)
+def parse_date(intdate, tz_str, strf=nil)
   return '' unless intdate
-  diff = Time.parse('2001-01-01 +0100')
-  if strf
-    Time.at(intdate + diff.to_i).to_datetime.strftime(strf)
-  else
-    Time.at(intdate + diff.to_i).to_datetime.rfc3339
-  end
+  diff = Time.parse("2001-01-01 #{tz_str}")
+  t = Time.at(intdate + diff.to_i).to_time
+  # Apple saves DST times differently so Ruby is off by 1h during DST. Correct here.
+  t2 = if t.dst? ; t - (60*60) else t end
+  #debug 1, "  Time: #{t}, #{t2}, dst=#{t.dst?}, int=#{intdate}, tz=#{tz_str}"
+  strf ? t2.strftime(strf) : t2
 end
 
 
@@ -156,7 +156,7 @@ def calc_faces(faces, mwidth, mheight, frot=0, raw_factor_x=1, raw_factor_y=1)
      'name' => face['name'] || 'Unknown', 'email' => face['email'] }
   end
   res.each {|f|
-    str = f['mode'] || "Face#{frot}"
+    str = f['mode'] || "Face#{frot}°"
     debug 3, "  #{str}: #{f['topleftx']} / #{f['toplefty']} (#{f['centerx']} / #{f['centery']}) +#{f['width']} +#{f['height']};  #{f['name']}\t ", true
   }
   res
@@ -360,7 +360,7 @@ masters.each do |photo|
       LEFT JOIN ImageComments c ON c.imageid=i.id WHERE c.comment='%s' AND a.relativePath LIKE '%%/%s' LIMIT 1",
                       photo['caption'].sqlclean, photo['rollname'].sqlclean)
     eventmetafile.printf("UPDATE Albums SET date='%s', icon=(%s) WHERE relativePath LIKE '%%/%s';\n",
-           parse_date(photo['roll_min_image_date'], '%Y-%m-%d'), subsearch, photo['rollname'].sqlclean)
+           parse_date(photo['roll_min_image_date'], photo['timezone'], '%Y-%m-%d'), subsearch, photo['rollname'].sqlclean)
   end
 
 
@@ -375,18 +375,25 @@ masters.each do |photo|
   end
 
 
-  @date = parse_date(photo['date'])
-  @date_master = parse_date(photo['datem'])
+  # ,v.imageDate AS date          -- for edited or rotated or converted images, this contains DateTimeModified!
+  # ,m.imageDate AS datem         --
+  # if modified: date_master == date_modified , date == date_original
+  # if not: date_master == date_original, date == empty
+  date_master = parse_date(photo['datem'], photo['timezone'])
+  date = parse_date(photo['date'], photo['timezone'])
+  @date_cr  = (!!date ? date : date_master)
+  @date_mod = (!!date and (date != date_master) ? date_master : nil)
   if curr_roll != photo['rollname']
     # write debug output if required
     if p = photo['poster_version_uuid']
-      debug 1, "EVENT: #{photo['rollname']} (thumb: #{p[0..6]}…): #{parse_date(photo['roll_min_image_date'], '%Y-%m-%d')} .. #{parse_date(photo['roll_max_image_date'], '%Y-%m-%d')}".bold, true
+      debug 1, "EVENT: #{photo['rollname']} (thumb: #{p[0..6]}…): #{parse_date(photo['roll_min_image_date'], photo['timezone'], '%Y-%m-%d')} .. #{parse_date(photo['roll_max_image_date'], photo['timezone'], '%Y-%m-%d')}".bold, true
     else
       debug 1, "EVENT: #{photo['rollname'] || "(NO ROLL NAME)"} (?)".bold, true
     end
     curr_roll = photo['rollname']
   end
-  str = " #{photo['id']}(#{photo['master_id']}): #{File.basename(photo['imagepath'])}\t#{photo['caption']}\t#{photo['rating']}* #{photo['uuid'][0..5]}…/#{photo['master_uuid'][0..5]}…\tc:#{@date_master} e:#{@date != @date_master ? @date : '='}"
+  datestr = "c:#{@date_cr.strftime("%Y%m%d-%H%M%S%z")} e:#{@date_mod ? @date_mod.strftime("%Y%m%d-%H%M%S%z") : ''}"
+  str = " #{photo['id']}(#{photo['master_id']}): #{File.basename(photo['imagepath'])}\t#{photo['caption']}\t#{photo['rating']}* #{photo['uuid'][0..5]}…/#{photo['master_uuid'][0..5]}…\t#{datestr}\t#{p=placelist[photo['place_id']] ? "Loc:#{p}" : ""}"
   debug 1, (ENV['DEBUG'].to_i > 1 ? str.bold : str), true
   debug 2, "  Desc: #{photodescs[photo['id'].to_i]}".green, true  if photodescs[photo['id'].to_i]
   debug 2, "  Orig: #{photo['master_height']}x#{photo['master_width']} (#{'%.4f' % photo['raw_factor_h']}/#{'%.4f' % photo['raw_factor_w']}), #{origpath} (#{File.exist?("#{basedir}/#{origpath}") ? 'OK' : 'missing'.red})", true
@@ -418,7 +425,7 @@ masters.each do |photo|
   @rating = photo['rating']       # Value 0 (no rating) and 1..5, like iPhoto
   @hidden = photo['hidden']       # set PickLabel to hidden flag -> would set value '1' which means 'rejected'
   @flagged = photo['flagged']     # set ColorLabel to flagged, would set value '1' which means 'red'
-  @date_meta = parse_date(photomoddates[photo['id']])
+  @date_meta = parse_date(photomoddates[photo['id']], photo['timezone'])
 
   # save GPS location info in XMP file (RKVersion::overridePlaceId -> Properties::RKPlace
   #       (user boundaryData?)
@@ -426,11 +433,11 @@ masters.each do |photo|
   @longitude = photo['longitude']
   @latitude  = photo['latitude']
   if p = placelist[photo['place_id']]
-    @gpscity = ''
-    @gpsstate = ''
-    @gpscountryname = ''
+    #@gpscity = ''
+    #@gpsstate = ''
+    #@gpscountryname = ''
     @gpslocation = p['defaultName']
-    @gps3lettercountrycode = ''
+    #@gps3lettercountrycode = ''
   else
     @gpslocation = nil
   end
