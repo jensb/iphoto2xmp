@@ -93,7 +93,6 @@ end
 # iPhoto internally stores times as integer values starting count at 2001-01-01. 
 # Correct to be able to use parsed date values.
 # Returns "YYYY-MM-DDTHH:MM:SS+NNNN" RFC 3339 string for XMP file.
-# TODO: read time zone from iPhoto database and do not assume GMT+1.
 def parse_date(intdate, tz_str, strf=nil)
   return '' unless intdate
   diff = Time.parse("2001-01-01 #{tz_str}")
