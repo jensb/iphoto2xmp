@@ -39,6 +39,33 @@ Use a `DEBUG` environment variable to print out debugging information. For examp
 
     DEBUG=1 ruby iphoto2xmp.rb "~/Pictures/My iPhoto library" "~/Pictures/Export Here"
 
+## Metadata debugging
+
+Sometimes iPhoto displays garbage dates in the "Edited:" and "Imported:" metadata fields.
+If you are unsure whether date metadata (taken, imported, edited, ...) are imported correctly, 
+you can check what iphoto2xmp detects. Create a CSV file like below (e.g. "dates.csv"):
+
+    caption,v_id,taken,edited,imported
+    IMG_0195,123,2002-01-24 15:49:01 +1,2002-01-25 14:01:25 +1,2001-01-25 13:49:29 +1
+    IMG_0196,124,2002-01-24 16:49:01 +1,2002-01-25 15:01:25 +1,2001-01-25 14:49:29 +1
+    ...
+
+This file contains the dates that iPhoto displays to the user - date taken, date edited and date imported.
+Then feed this file to iphoto2xmp like this:
+
+    DATES=dates.csv ruby iphoto2xmp.rb "~/Pictures/My iPhoto library" "~/Pictures/Export Here"
+    
+In this mode, iphoto2xmp will:
+
+ * ignore all photos except the ones in the files
+ * print out all date values it found in the iPhoto database
+ * Try to match the ones with the ones iPhoto displayed
+ * Tell you about it
+ 
+This helps debugging when iphoto2xmp displays incorrect date metadata.
+Always use this mode to report issues about timestamps.
+
+
 ## Credits
 The original idea was taken from https://gist.github.com/lpar/2191225, but the script has been heavily modified to access more iPhoto metadata (not just AlbumData.xml), distinguish between original and modified photos, and not rely on exiftool. This also brings a huge speed improvement.
 

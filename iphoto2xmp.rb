@@ -44,6 +44,7 @@ class String
   def yellow;"\e[33m#{self}\e[0m" end
   def blue; "\e[34m#{self}\e[0m" end
   def cyan; "\e[36m#{self}\e[0m" end
+  def violet; "\e[35m#{self}\e[0m" end
   def sqlclean; self.gsub(/\'/, "''") end
 end
 
@@ -93,13 +94,17 @@ end
 # iPhoto internally stores times as integer values starting count at 2001-01-01. 
 # Correct to be able to use parsed date values.
 # Returns "YYYY-MM-DDTHH:MM:SS+NNNN" RFC 3339 string for XMP file.
-def parse_date(intdate, tz_str, strf=nil)
+def parse_date(intdate, tz_str="", strf=nil, deduct_tz=false)
   return '' unless intdate
   diff = Time.parse("2001-01-01 #{tz_str}")
   t = Time.at(intdate + diff.to_i).to_time
   # Apple saves DST times differently so Ruby is off by 1h during DST. Correct here.
   t2 = if t.dst? ; t - (60*60) else t end
-  #debug 1, "  Time: #{t}, #{t2}, dst=#{t.dst?}, int=#{intdate}, tz=#{tz_str}"
+  if deduct_tz
+    t2 += Time.new.utc_offset
+    unless t.dst?; t2 -= 3600 ; end
+  end
+  #debug 1, "  .. Time: #{t}, #{t2}, dst=#{t.dst?}, int=#{intdate}, tz=#{tz_str}, deduct=#{deduct_tz}, offset=#{Time.zone_offset(tz_str)}"
   strf ? t2.strftime(strf) : t2
 end
 
@@ -162,6 +167,31 @@ def calc_faces(faces, mwidth, mheight, frot=0, raw_factor_x=1, raw_factor_y=1)
 end
 
 
+
+
+# Check date matching mode.
+date_debug = nil
+date_debug_ids = []
+#if ENV['DATES'] and dates = File.read('photodates-in-iPhoto.tsv').split(/[\r\n]+/).collect.with_index {|row,ri|
+#      row.split(/[\t,]/).collect.with_index { |cell,ci|
+#        (ri==0 or ci==0) ? cell : DateTime.parse(cell)
+#      }
+#    }
+if ENV['DATES']
+  ENV['DEBUG'] = '1'
+  require 'csv'
+  date_debug = CSV.read(ENV['DATES'], headers: true)
+  date_debug.each { |row| row.each do |k,v|
+    #debug 1, "  Error parsing CSV: #{row.inspect}".red, true
+    row[k] = DateTime.parse(v).to_time unless %w(caption v_id).include?(k)
+  end }
+  date_debug_ids = date_debug.collect {|row| row["v_id"].to_i }
+  puts "Error: no (detectable) photo entries in #{ENV['DATES']}. Check format." if date_debug_ids.empty?
+  debug 1, "Entering date debug mode. Reading #{ENV['DATES']} as CSV, #{date_debug.size} rows.".bold.red, true
+  debug 1, "Photo IDs: #{date_debug_ids.join(", ")}".red, true
+end
+
+
 ###################################################################################################
 # Stage 1: Get main image info.
 # Cannot use AlbumData.xml because a lot of info is not listed at all in AlbumData.xml but should be exported.
@@ -192,10 +222,11 @@ masterhead, *masters = librarydb.execute2(
                                       -- Previews/dirname($imagepath)/$uuid/basename($imagepath)
         ,v.imageDate AS date          -- for edited or rotated or converted images, this contains DateTimeModified!
         ,m.imageDate AS datem         --
-        ,m.fileCreationDate AS datem_creation
-        ,m.fileModificationDate AS datem_mod
-        ,replace(i.name, ' @ ', 'T') AS date_import -- contains datestamp of import procedure for a group of files 
-
+        ,v.exportImageChangeDate AS date_exportimagechange -- is this the 'date imported'? No
+        ,m.fileCreationDate AS date_filecreation -- is this the 'date imported'? No
+        ,m.fileModificationDate AS date_filemod
+        ,replace(i.name, ' @ ', 'T') AS date_importgroup -- contains datestamp of import procedure for a group of files,
+                                                    -- but this is apparently incorrect for images before 2012 -> ignore
         ,v.imageTimeZoneName AS timezone
         ,v.exifLatitude AS latitude
         ,v.exifLongitude AS longitude
@@ -302,7 +333,7 @@ curr_roll = nil
 ###################################################################################################
 basedir = iphotodir
 debug 1, "Phase 2/3: Exporting iPhoto archive\n  from #{basedir}\n  to   #{outdir}".bold, true
-bar = ProgressBar.new('Exporting', masters.length) unless ENV['DEBUG']   # only if DEBUG isn't set
+bar = ProgressBar.create(title: 'Exporting', total: masters.length) unless ENV['DEBUG']   # only if DEBUG isn't set
 
 $missing = File.open("#{outdir}/missing.log", 'w')
 $problems = false
@@ -317,6 +348,8 @@ group_mod_data = []
 # only four had just a single version and one had six versions (print projects). So we can safely assume
 # one 'original' and one 'modified' version exist of each image and just loop through the master images.
 masters.each do |photo|
+
+  next if date_debug and !date_debug_ids.include?(photo['id'])
 
   origpath = "Masters/#{photo['imagepath']}"
 
@@ -382,6 +415,8 @@ masters.each do |photo|
   date = parse_date(photo['date'], photo['timezone'])
   @date_cr  = (!!date ? date : date_master)
   @date_mod = (!!date and (date != date_master) ? date_master : nil)
+  #@date_import = parse_date(photo['date_imported'])   # do not pass time zone, or it will be off by 1hr. Why?
+  #@date_import2 = photo['date_import']
   if curr_roll != photo['rollname']
     # write debug output if required
     if p = photo['poster_version_uuid']
@@ -391,7 +426,7 @@ masters.each do |photo|
     end
     curr_roll = photo['rollname']
   end
-  datestr = "c:#{@date_cr.strftime("%Y%m%d-%H%M%S%z")} e:#{@date_mod ? @date_mod.strftime("%Y%m%d-%H%M%S%z") : ''}"
+  datestr = "taken:#{@date_cr.strftime("%Y%m%d-%H%M%S%z")} edit:#{@date_mod ? @date_mod.strftime("%Y%m%d-%H%M%S%z") : ''}"
   str = " #{photo['id']}(#{photo['master_id']}): #{File.basename(photo['imagepath'])}\t#{photo['caption']}\t#{photo['rating']}* #{photo['uuid'][0..5]}…/#{photo['master_uuid'][0..5]}…\t#{datestr}\t#{p=placelist[photo['place_id']] ? "Loc:#{p}" : ""}"
   debug 1, (ENV['DEBUG'].to_i > 1 ? str.bold : str), true
   debug 2, "  Desc: #{photodescs[photo['id'].to_i]}".green, true  if photodescs[photo['id'].to_i]
@@ -404,6 +439,44 @@ masters.each do |photo|
     debug 2, "  Mod : #{photo['processed_height']}x#{photo['processed_width']}, #{modpath} ", false
     debug 2, File.exist?("#{basedir}/#{modpath}") ? '(true)' : '(missing)'.red, true
     debug 3, "     => #{moddestpath}".cyan, true
+  end
+
+  if date_debug    # debuglevel 3 is implicit
+    def date_compare(label, var, matches)
+      str1 = "  #{label.ljust(30)}: #{var}"
+      str2 = ""
+      ['taken', 'edited', 'imported'].each {|k|
+        off = (var.to_i - matches[k].to_i)
+        if var.to_i == matches[k].to_i
+          str2 += " = #{k}, ".green
+        elsif off.abs <= 60         # off by less than 10 seconds
+          str2 += " ~ #{k} (off #{off}s), ".yellow.bold
+        elsif off.abs <= 2*60*60    # off by max. 2 hours
+          str2 += " ~ #{k} (off #{off}s), ".yellow
+        end
+      }
+      str1 = str1.red unless str2
+      debug 1, "#{str1}, #{str2}", true
+    end
+    photo_match = date_debug.find {|row| row['v_id'].to_i == photo['id'].to_i }
+    %w(taken edited imported).each {|w| debug 1, "  #{w.ljust(30)}: #{photo_match[w]}".violet, true }
+
+    # This seems to be the "Last Modified" timestamp.
+    date_compare("m.imageDate", parse_date(photo['datem'], photo['timezone']), photo_match)
+    # This seems to be the "Taken at" timestamp.
+    date_compare("v.imageDate", parse_date(photo['date'], photo['timezone']), photo_match)
+
+    # These following are *sometimes* equal to the "Edited" timestamp, however they don't use the photo's time zone.
+    # exportImageChangeDate seems to be the dated displayed as "Edited" when the first two are identical.
+    date_compare("v.exportImageChangeDate", parse_date(photo['date_exportimagechange'], photo['timezone'], nil, true), photo_match)
+    date_compare("m.fileCreationDate", parse_date(photo['date_filecreation'], photo['timezone'], nil, true), photo_match)
+    date_compare("m.fileModificationDate", parse_date(photo['date_filemod'], photo['timezone'], nil, true), photo_match)
+
+    # This is the "Imported at" timestamp, but import groups were only introduced in 2013-08 and later - before, the imported date was (???).
+    ti = DateTime.parse(photo['date_importgroup']).to_time
+    ti -= ti.utc_offset
+    date_compare("i.imageDate", ti, photo_match)
+    next   # Do not export anything, just ouptut the photo metainfo.
   end
 
   #
@@ -617,6 +690,8 @@ masters.each do |photo|
 end
 
 eventmetafile.close
+
+exit if date_debug
 
 # Write grouping information to SQL file for Digikam.
 # Group data into blocks of 1000 inserts otherwise sqlite will barf.
