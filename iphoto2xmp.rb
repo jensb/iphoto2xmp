@@ -172,6 +172,7 @@ end
 # Check date matching mode.
 date_debug = nil
 date_debug_ids = []
+date_debug_stats = {}
 #if ENV['DATES'] and dates = File.read('photodates-in-iPhoto.tsv').split(/[\r\n]+/).collect.with_index {|row,ri|
 #      row.split(/[\t,]/).collect.with_index { |cell,ci|
 #        (ri==0 or ci==0) ? cell : DateTime.parse(cell)
@@ -189,6 +190,7 @@ if ENV['DATES']
   puts "Error: no (detectable) photo entries in #{ENV['DATES']}. Check format." if date_debug_ids.empty?
   debug 1, "Entering date debug mode. Reading #{ENV['DATES']} as CSV, #{date_debug.size} rows.".bold.red, true
   debug 1, "Photo IDs: #{date_debug_ids.join(", ")}".red, true
+
 end
 
 
@@ -213,6 +215,7 @@ masterhead, *masters = librarydb.execute2(
         ,f.minImageTimeZoneName AS roll_min_image_tz
         ,f.maxImageTimeZoneName AS roll_max_image_tz
         ,f.posterVersionUuid AS poster_version_uuid     -- event thumbnail image uuid
+        ,f.createDate AS date_foldercreation            -- is this the 'imported as' date?
         ,v.uuid AS uuid
         ,m.uuid AS master_uuid        -- master (unedited) image. Required for face rectangle conversion.
         ,v.versionNumber AS version_number  -- 1 if edited image, 0 if original image
@@ -220,12 +223,14 @@ masterhead, *masters = librarydb.execute2(
         ,m.type AS mediatype          -- IMGT, VIDT
         ,m.imagePath AS imagepath     -- 2015/04/27/20150427-123456/FOO.RW2, yields Masters/$imagepath and
                                       -- Previews/dirname($imagepath)/$uuid/basename($imagepath)
-        ,v.imageDate AS date          -- for edited or rotated or converted images, this contains DateTimeModified!
-        ,m.imageDate AS datem         --
-        ,v.exportImageChangeDate AS date_exportimagechange -- is this the 'date imported'? No
-        ,m.fileCreationDate AS date_filecreation -- is this the 'date imported'? No
-        ,m.fileModificationDate AS date_filemod
-        ,replace(i.name, ' @ ', 'T') AS date_importgroup -- contains datestamp of import procedure for a group of files,
+     -- ,v.createDate AS date_imported
+        ,m.createDate AS date_imported
+        ,v.imageDate AS date_taken
+     -- ,m.imageDate AS datem
+        ,v.exportImageChangeDate AS date_modified
+     -- ,m.fileCreationDate AS date_filecreation -- is this the 'date imported'? No
+     -- ,m.fileModificationDate AS date_filemod
+     -- ,replace(i.name, ' @ ', 'T') AS date_importgroup -- contains datestamp of import procedure for a group of files,
                                                     -- but this is apparently incorrect for images before 2012 -> ignore
         ,v.imageTimeZoneName AS timezone
         ,v.exifLatitude AS latitude
@@ -407,16 +412,6 @@ masters.each do |photo|
   end
 
 
-  # ,v.imageDate AS date          -- for edited or rotated or converted images, this contains DateTimeModified!
-  # ,m.imageDate AS datem         --
-  # if modified: date_master == date_modified , date == date_original
-  # if not: date_master == date_original, date == empty
-  date_master = parse_date(photo['datem'], photo['timezone'])
-  date = parse_date(photo['date'], photo['timezone'])
-  @date_cr  = (!!date ? date : date_master)
-  @date_mod = (!!date and (date != date_master) ? date_master : nil)
-  #@date_import = parse_date(photo['date_imported'])   # do not pass time zone, or it will be off by 1hr. Why?
-  #@date_import2 = photo['date_import']
   if curr_roll != photo['rollname']
     # write debug output if required
     if p = photo['poster_version_uuid']
@@ -426,7 +421,10 @@ masters.each do |photo|
     end
     curr_roll = photo['rollname']
   end
-  datestr = "taken:#{@date_cr.strftime("%Y%m%d-%H%M%S%z")} edit:#{@date_mod ? @date_mod.strftime("%Y%m%d-%H%M%S%z") : ''}"
+  @date_taken = parse_date(photo['date_taken'], photo['timezone'])
+  @date_modified = parse_date(photo['date_modified'], photo['timezone'])
+  @date_imported = parse_date(photo['date_imported'], photo['timezone'])
+  datestr = "taken:#{@date_taken.strftime("%Y%m%d-%H%M%S%z")} edit:#{@date_modified.strftime("%Y%m%d-%H%M%S%z")} import:#{@date_imported.strftime("%Y%m%d-%H%M%S%z")}"
   str = " #{photo['id']}(#{photo['master_id']}): #{File.basename(photo['imagepath'])}\t#{photo['caption']}\t#{photo['rating']}* #{photo['uuid'][0..5]}…/#{photo['master_uuid'][0..5]}…\t#{datestr}\t#{p=placelist[photo['place_id']] ? "Loc:#{p}" : ""}"
   debug 1, (ENV['DEBUG'].to_i > 1 ? str.bold : str), true
   debug 2, "  Desc: #{photodescs[photo['id'].to_i]}".green, true  if photodescs[photo['id'].to_i]
@@ -443,12 +441,14 @@ masters.each do |photo|
 
   if date_debug    # debuglevel 3 is implicit
     def date_compare(label, var, matches)
+      stats = {}
       str1 = "  #{label.ljust(30)}: #{var}"
       str2 = ""
       ['taken', 'edited', 'imported'].each {|k|
         off = (var.to_i - matches[k].to_i)
         if var.to_i == matches[k].to_i
           str2 += " = #{k}, ".green
+          stats[k] = 1
         elsif off.abs <= 60         # off by less than 10 seconds
           str2 += " ~ #{k} (off #{off}s), ".yellow.bold
         elsif off.abs <= 2*60*60    # off by max. 2 hours
@@ -457,25 +457,34 @@ masters.each do |photo|
       }
       str1 = str1.red unless str2
       debug 1, "#{str1}, #{str2}", true
+      stats
     end
     photo_match = date_debug.find {|row| row['v_id'].to_i == photo['id'].to_i }
     %w(taken edited imported).each {|w| debug 1, "  #{w.ljust(30)}: #{photo_match[w]}".violet, true }
 
-    # This seems to be the "Last Modified" timestamp.
-    date_compare("m.imageDate", parse_date(photo['datem'], photo['timezone']), photo_match)
+    # This seems to be the "Last Modified" timestamp - if different from "Taken at"
+    #date_compare("m.imageDate", parse_date(photo['datem'], photo['timezone']), photo_match)
     # This seems to be the "Taken at" timestamp.
-    date_compare("v.imageDate", parse_date(photo['date'], photo['timezone']), photo_match)
+    date_compare("v.imageDate", parse_date(photo['date_taken'], photo['timezone']), photo_match)
+    # This seems to be the "Last Modified" timestamp.
+    date_compare("v.exportImageChangeDate", parse_date(photo['date_modified'], photo['timezone'], nil, true), photo_match)
+
+    # This seems to be the "Imported at" timestamp.
+    date_compare("m.createDate", parse_date(photo['date_imported'], photo['timezone'], nil, true), photo_match)
+    #date_compare("v.createDate", parse_date(photo['date_imported'], photo['timezone'], nil, true), photo_match)
+    #date_compare("Master file birthtime", File.birthtime(File.join(basedir, origpath)), photo_match)
+    #date_compare("Versions file birthtime", File.birthtime(File.join(basedir, modpath)), photo_match) if File.exist?(File.join(basedir, modpath))
 
     # These following are *sometimes* equal to the "Edited" timestamp, however they don't use the photo's time zone.
     # exportImageChangeDate seems to be the dated displayed as "Edited" when the first two are identical.
-    date_compare("v.exportImageChangeDate", parse_date(photo['date_exportimagechange'], photo['timezone'], nil, true), photo_match)
-    date_compare("m.fileCreationDate", parse_date(photo['date_filecreation'], photo['timezone'], nil, true), photo_match)
-    date_compare("m.fileModificationDate", parse_date(photo['date_filemod'], photo['timezone'], nil, true), photo_match)
+    #date_compare("m.fileCreationDate", parse_date(photo['date_filecreation'], photo['timezone'], nil, true), photo_match)
+    #date_compare("m.fileModificationDate", parse_date(photo['date_filemod'], photo['timezone'], nil, true), photo_match)
+    #date_compare("f.createDate", parse_date(photo['date_foldercreation'], photo['timezone'], nil, true), photo_match)
 
     # This is the "Imported at" timestamp, but import groups were only introduced in 2013-08 and later - before, the imported date was (???).
-    ti = DateTime.parse(photo['date_importgroup']).to_time
-    ti -= ti.utc_offset
-    date_compare("i.imageDate", ti, photo_match)
+    #ti = DateTime.parse(photo['date_importgroup']).to_time
+    #ti -= ti.utc_offset
+    #date_compare("i.imageDate", ti, photo_match)
     next   # Do not export anything, just ouptut the photo metainfo.
   end
 

@@ -51,6 +51,10 @@ you can check what iphoto2xmp detects. Create a CSV file like below (e.g. "dates
     ...
 
 This file contains the dates that iPhoto displays to the user - date taken, date edited and date imported.
+v_id is the *model_id* column from the *RKVersions* table which is displayed upon export like this (here, it's *456*):
+
+    *456*(123): P11700295.JPG   My_image_Caption    2*  ...
+
 Then feed this file to iphoto2xmp like this:
 
     DATES=dates.csv ruby iphoto2xmp.rb "~/Pictures/My iPhoto library" "~/Pictures/Export Here"
@@ -78,6 +82,7 @@ The script can currently export the following metadata:
  * Captions / Titles
  * Descriptions
  * Keywords (iPhoto does not use hierarchical tags)
+ * Date taken, Date modified (in iPhoto), date imported (into iPhoto) (as EXIF flag "DateTimeDigitized")
  * Event names (used for the folder structure, not exported into XMP)
    Note: photos in a "New Event" (i.e. just imported into iPhoto) will be imported into the output root directory.
  * GPS coordinates
