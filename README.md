@@ -84,7 +84,7 @@ The script can currently export the following metadata:
  * Keywords (iPhoto does not use hierarchical tags)
  * Date taken, Date modified (in iPhoto), date imported (into iPhoto) (as EXIF flag "DateTimeDigitized")
  * Event names (used for the folder structure, not exported into XMP)
-   Note: photos in a "New Event" (i.e. just imported into iPhoto) will be imported into the output root directory.
+   Note: photos in a "New Event" (i.e. just imported into iPhoto) will be imported into a "00_ImagesWithoutEvents" directory.
  * GPS coordinates
  * Edited and original images, edit operation (eg. "Crop", "WhiteBalance", ...)
  * Face names and face coordinates
@@ -138,7 +138,7 @@ The script will additionally identify
  * orphaned images in your iPhoto Library (ie. images which are referenced nowhere) and
  * missing images (images which are in the database but have no associated file).
 
-and optionally copy orphaned images to the export root directory 
+and copy orphaned images to the output root directory.
 
 
 ## Keywords

@@ -22,8 +22,8 @@
    xmp:CreatorTool="iphoto2xmp.rb by Jens Benecke"
    xmp:MetadataDate="<%= @date_meta %>"
    xmp:Rating="<%= @rating %>"
-   xmp:CreateDate="<%= @date_taken %>"
-   xmp:ModifyDate="<%= @date_modified %>"
+   xmp:CreateDate="<%= @date_imported %>"
+   photoshop:DateCreated="<%= @date_taken %>"
    acdsee:rating="<%= @rating %>"
    acdsee:caption="<%= @caption %>"
    acdsee:notes="<%= @description %>"
@@ -37,7 +37,12 @@
    exif:GPSLongitudeRef="E"
    exif:GPSVersionID="2.0.0.0"
    video:DateTimeOriginal="<%= @date_taken %>"
+<!-- according to MWG guidelines, this is how to store dates. http://www.metadataworkinggroup.org/pdf/mwg_guidance.pdf#page=37 -->
+<% if !!@date_modified and @date_taken != @date_modified %>
+   xmp:ModifyDate="<%= @date_modified %>"
    video:ModificationDate="<%= @date_modified %>"
+   exif:DateTime="<%= @date_modified %>"
+<% end %>
 <% if !!@latitude %>
    exif:GPSLatitude="<%= @latitude %>"
    exif:GPSLongitude="<%= @longitude %>"

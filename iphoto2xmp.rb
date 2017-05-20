@@ -64,8 +64,17 @@ end
 # TODO: prevent duplicate links from the same original photo.
 def link_photo(basedir, outdir, photo, imgfile, origfile)
   imgpath  = "#{basedir}/#{imgfile}"  # source image path, absolute
-  destpath = photo['rollname']  ?  "#{outdir}/#{photo['rollname']}/#{File.basename(imgpath)}"
-                                :  "#{outdir}#{imgfile}"
+  if photo['rollname']
+    if year = parse_date(photo['roll_min_image_date'], photo['roll_min_image_tz'])
+      destpath = "#{outdir}/#{year.strftime("%Y")}/#{photo['rollname']}/#{File.basename(imgpath)}"
+    else
+      "#{outdir}/#{photo['rollname']}/#{File.basename(imgpath)}"
+    end
+  else
+    "#{outdir}/00_ImagesWithoutEvents/#{imgfile}"
+  end
+  #destpath = photo['rollname']  ?  "#{outdir}/#{photo['rollname']}/#{File.basename(imgpath)}"
+  #                              :  "#{outdir}#{imgfile}"
   destdir  = File.dirname(destpath)
   # if origfile differs from imgfile, append "_v1" to imgfiles's basename to avoid overwriting
   if origfile and File.exist?(imgpath) and File.exist?(destpath) and File.size(imgpath) != File.size(destpath)
@@ -408,6 +417,7 @@ masters.each do |photo|
     mod_sub = sprintf("SELECT i.id FROM Images i LEFT JOIN Albums a ON i.album=a.id WHERE i.name='%s' AND a.relativePath LIKE '%%/%s'", File.basename(modxmppath, '.*').sqlclean, photo['rollname'].sqlclean)
     # last parameter: 1 = versioned groups,  2 = normal groups. Here we want 1.
     group_mod_data << sprintf("((%s), (%s), 1)", mod_sub, origsub)
+    # noinspection RubyScope
     group_mod_data << sprintf("((%s), (%s), 2)", origsub, mod_sub)
   end
 
