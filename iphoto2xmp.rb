@@ -231,7 +231,7 @@ masterhead, *masters = librarydb.execute2(
         ,v.mainRating AS rating       -- TODO: Rating is always applied to the master image, not the edited one
         ,m.type AS mediatype          -- IMGT, VIDT
         ,m.imagePath AS imagepath     -- 2015/04/27/20150427-123456/FOO.RW2, yields Masters/$imagepath and
-                                      -- Previews/dirname($imagepath)/$uuid/basename($imagepath)
+                                      -- Previews: either Previews/$imagepath/ or dirname($imagepath)/$uuid/basename($imagepath)
      -- ,v.createDate AS date_imported
         ,m.createDate AS date_imported
         ,v.imageDate AS date_taken
@@ -378,7 +378,10 @@ masters.each do |photo|
   next if $known["#{basedir}/#{origpath}"]
   # Preview can be mp4, mov, jpg, whatever - but not RAW/RW2, it seems.
   # Preview has jpg or JPG extension. Try both.
-  modpath = "Previews/#{File.dirname(photo['imagepath'])}/#{photo['uuid']}/#{File.basename(photo['imagepath']).gsub(/PNG$|JPG$|RW2$/, 'jpg')}"
+  # Preview can be in one of two directory structures (depending on iPhoto version). Try both.
+  modpath1 = "Previews/#{photo['imagepath']}"
+  modpath2 = "Previews/#{File.dirname(photo['imagepath'])}/#{photo['uuid']}/#{File.basename(photo['imagepath']).gsub(/PNG$|JPG$|RW2$/, 'jpg')}"
+  modpath = Dir.exist?(File.dirname("#{basedir}/#{modpath1}")) ? modpath1 : modpath2
   if photo['mediatype'] != 'VIDT' and !File.exist?("#{basedir}/#{modpath}")
     modpath = modpath.sub(/jpg$/, 'JPG')
   end
@@ -450,10 +453,17 @@ masters.each do |photo|
   if photo['face_rotation'].to_i != 0
     debug 2, "  Flip: #{photo['face_rotation']}°".blue, true
   end
+  # Test for modified images.
+  #debug 2, "  Mod1: #{modpath1}, Dir:", false
+  #debug 2, Dir.exist?(File.dirname("#{basedir}/#{modpath1}")) ? 'OK'.green : 'missing'.red, false
+  #debug 2, File.exist?("#{basedir}/#{modpath1}") ? ', file OK'.green : ', file missing'.red, true
+  #debug 2, "  Mod2: #{modpath2} ", false
+  #debug 2, Dir.exist?(File.dirname("#{basedir}/#{modpath2}")) ? 'OK'.green : 'missing'.red, false
+  #debug 2, File.exist?("#{basedir}/#{modpath2}") ? ', file OK'.green : ', file missing'.red, true
   if modxmppath    # modified version *should* exist
     debug 2, "  Mod : #{photo['processed_height']}x#{photo['processed_width']}, #{modpath} ", false
-    debug 2, File.exist?("#{basedir}/#{modpath}") ? '(true)' : '(missing)'.red, true
-    debug 3, "     => #{moddestpath}".cyan, true
+    debug 2, File.exist?("#{basedir}/#{modpath}") ? '(found)'.green : '(missing)'.red, true
+    debug 2, "     => #{moddestpath}".cyan, true  if File.exist?("#{basedir}/#{modpath}")
   end
 
   if date_debug    # debuglevel 3 is implicit
