@@ -38,14 +38,14 @@ File.directory?(outdir) || Dir.mkdir(outdir)
 
 # just some eye candy for output
 class String
-  def bold; "\e[1m#{self}\e[21m" end
+  def bold; "\e[1m#{self}\e[0m" end
   def red;  "\e[31m#{self}\e[0m" end
   def green;"\e[32m#{self}\e[0m" end
   def yellow;"\e[33m#{self}\e[0m" end
   def blue; "\e[34m#{self}\e[0m" end
   def cyan; "\e[36m#{self}\e[0m" end
   def violet; "\e[35m#{self}\e[0m" end
-  def sqlclean; self.gsub(/\'/, "''") end
+  def sqlclean; self.gsub(/\'/, "''").gsub(/%/, "\%") end
 end
 
 
@@ -208,6 +208,7 @@ end
 # Cannot use AlbumData.xml because a lot of info is not listed at all in AlbumData.xml but should be exported.
 # Examples: keywords, hidden photos, trashcan, location *names*, ...
 ###################################################################################################
+puts "Reading iPhoto database ..." unless ENV['DEBUG']
 debug 1, 'Phase 1: Reading iPhoto SQLite data (Records: Library '.bold, false
 librarydb = SQLite3::Database.new("#{iphotodir}/Database/apdb/Library.apdb")
 librarydb.results_as_hash = true  # gibt [{"modelId"=>1, "uuid"=>"SwX6W9...", "name"=>".."
@@ -278,7 +279,7 @@ deschead, *descs = propertydb.execute2("SELECT
 FROM RKIptcProperty i LEFT JOIN RKUniqueString s ON i.stringId=s.modelId
 WHERE i.propertyKey = 'Caption/Abstract' ORDER BY versionId")
 photodescs = descs.inject({}) {|h,desc| h[desc['versionId']] = desc['string']; h }
-# FIXME: strictly speaking, this is the date of adding the description, not the last edit date
+# FYI: this is the date of adding the description, not the last photo edit date
 photomoddates = descs.inject({}) {|h,desc| h[desc['versionId']] = desc['modDate']; h }
 debug 1, "Description #{descs.count}; ", false
 
@@ -362,6 +363,7 @@ group_mod_data = []
 # only four had just a single version and one had six versions (print projects). So we can safely assume
 # one 'original' and one 'modified' version exist of each image and just loop through the master images.
 masters.each do |photo|
+  bar.increment unless ENV['DEBUG']
 
   next if date_debug and !date_debug_ids.include?(photo['id'])
   if resume = ENV['RESUME'].to_i and resume > 0
@@ -444,11 +446,11 @@ masters.each do |photo|
   @date_taken = parse_date(photo['date_taken'], photo['timezone'])
   @date_modified = parse_date(photo['date_modified'], photo['timezone'])
   @date_imported = parse_date(photo['date_imported'], photo['timezone'])
-  datestr = "taken:#{@date_taken.strftime("%Y%m%d-%H%M%S%z")} edit:#{@date_modified.strftime("%Y%m%d-%H%M%S%z")} import:#{@date_imported.strftime("%Y%m%d-%H%M%S%z")}"
+  datestr = "taken:#{@date_taken.strftime("%Y%m%d-%H%M%S%z") rescue "MISSING".red} edit:#{@date_modified.strftime("%Y%m%d-%H%M%S%z") rescue "MISSING".red} import:#{@date_imported.strftime("%Y%m%d-%H%M%S%z") rescue "MISSING".red}"
   str = " #{photo['id']}(#{photo['master_id']}): #{File.basename(photo['imagepath'])}\t#{photo['caption']}\t#{photo['rating']}* #{photo['uuid'][0..5]}…/#{photo['master_uuid'][0..5]}…\t#{datestr}\t#{p=placelist[photo['place_id']] ? "Loc:#{p}" : ""}"
   debug 1, (ENV['DEBUG'].to_i > 1 ? str.bold : str), true
   debug 2, "  Desc: #{photodescs[photo['id'].to_i]}".green, true  if photodescs[photo['id'].to_i]
-  debug 2, "  Orig: #{photo['master_height']}x#{photo['master_width']} (#{'%.4f' % photo['raw_factor_h']}/#{'%.4f' % photo['raw_factor_w']}), #{origpath} (#{File.exist?("#{basedir}/#{origpath}") ? 'OK' : 'missing'.red})", true
+  debug 2, "  Orig: #{photo['master_height']}x#{photo['master_width']} (#{'%.4f' % photo['raw_factor_h']}/#{'%.4f' % photo['raw_factor_w']}), #{origpath} (#{File.exist?("#{basedir}/#{origpath}") ? 'found'.green : 'missing'.red})", true
   debug 3, "     => #{origdestpath}".cyan, true
   if photo['face_rotation'].to_i != 0
     debug 2, "  Flip: #{photo['face_rotation']}°".blue, true
@@ -722,7 +724,6 @@ masters.each do |photo|
     j.close
   end
 
-  bar.inc unless ENV['DEBUG']
 end
 
 eventmetafile.close
