@@ -374,6 +374,11 @@ masters.each do |photo|
     end
   end
 
+  # Debugging to export a single image (or all images with a certain name)
+  if caption = ENV['CAPTION']
+    next unless caption == photo['caption']
+  end
+
   origpath = "Masters/#{photo['imagepath']}"
 
   # $known doesn't work here, various info in RKVersion is different (eg. caption)
@@ -728,7 +733,7 @@ end
 
 eventmetafile.close
 
-exit if date_debug
+exit if date_debug or ENV['CAPTION']
 
 # Write grouping information to SQL file for Digikam.
 # Group data into blocks of 1000 inserts otherwise sqlite will barf.
