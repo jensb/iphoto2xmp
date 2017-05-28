@@ -37,7 +37,7 @@
    exif:GPSLongitudeRef="E"
    exif:GPSVersionID="2.0.0.0"
    video:DateTimeOriginal="<%= @date_taken %>"
-<!-- according to MWG guidelines, this is how to store dates. http://www.metadataworkinggroup.org/pdf/mwg_guidance.pdf#page=37 -->
+<%# according to MWG guidelines, this is how to store dates. http://www.metadataworkinggroup.org/pdf/mwg_guidance.pdf#page=37 %>
 <% if !!@date_modified and @date_taken != @date_modified %>
    xmp:ModifyDate="<%= @date_modified %>"
    video:ModificationDate="<%= @date_modified %>"
