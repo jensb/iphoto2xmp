@@ -118,6 +118,27 @@ def parse_date(intdate, tz_str="", strf=nil, deduct_tz=false)
 end
 
 
+# Debugging aid. Search for matching dates in metadata.
+def date_compare(label, var, matches)
+  stats = {}
+  str1 = "  #{label.ljust(30)}: #{var}"
+  str2 = ""
+  ['taken', 'edited', 'imported'].each {|k|
+    off = (var.to_i - matches[k].to_i)
+    if var.to_i == matches[k].to_i
+      str2 += " = #{k}, ".green
+      stats[k] = 1
+    elsif off.abs <= 60         # off by less than 10 seconds
+      str2 += " ~ #{k} (off #{off}s), ".yellow.bold
+    elsif off.abs <= 2*60*60    # off by max. 2 hours
+      str2 += " ~ #{k} (off #{off}s), ".yellow
+    end
+  }
+  str1 = str1.red unless str2
+  debug 1, "#{str1}, #{str2}", true
+  stats
+end
+
 # Calculate face position depending on rotation status and file type (special treatment for RW2).
 # Remember that iPhoto "y" values are counted from the *bottom*, like in mathematics! ("x" are from the left as usual.)
 
@@ -474,25 +495,6 @@ masters.each do |photo|
   end
 
   if date_debug    # debuglevel 3 is implicit
-    def date_compare(label, var, matches)
-      stats = {}
-      str1 = "  #{label.ljust(30)}: #{var}"
-      str2 = ""
-      ['taken', 'edited', 'imported'].each {|k|
-        off = (var.to_i - matches[k].to_i)
-        if var.to_i == matches[k].to_i
-          str2 += " = #{k}, ".green
-          stats[k] = 1
-        elsif off.abs <= 60         # off by less than 10 seconds
-          str2 += " ~ #{k} (off #{off}s), ".yellow.bold
-        elsif off.abs <= 2*60*60    # off by max. 2 hours
-          str2 += " ~ #{k} (off #{off}s), ".yellow
-        end
-      }
-      str1 = str1.red unless str2
-      debug 1, "#{str1}, #{str2}", true
-      stats
-    end
     photo_match = date_debug.find {|row| row['v_id'].to_i == photo['id'].to_i }
     %w(taken edited imported).each {|w| debug 1, "  #{w.ljust(30)}: #{photo_match[w]}".violet, true }
 
