@@ -98,7 +98,7 @@ The script can currently export the following metadata:
    (the structure is not decoded yet but can be looked at)
  
 
-## Post Mortem operations (Digikam 4.14 specific)
+## Post Mortem operations (Digikam 4+ specific)
 Some image properties cannot (properly) be converted into metadata suitable for XMP sidecar files. They must be
 patched into the target application's database after the import process. This requires exceuting `sqlite` scripts
 **after starting Digikam at least once** and letting it update the image database.
@@ -115,7 +115,8 @@ Usage for each file (grouped_images.sql as an example):
 
     sqlite3 ~/Pictures/digikam4.db < grouped_images.sql
 
-If there is no output, everything went fine. If there is a lot of output, there is a problem with the SQL. Post the output as an issue here on Github.
+If there is no output, everything went fine. If there is a lot of output, there is a problem with the SQL.
+Post the output as an issue here on Github.
 
 ## Planned Features (TODO)
 The script *should* (at some point) also do the following.

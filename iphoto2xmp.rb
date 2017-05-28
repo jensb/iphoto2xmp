@@ -364,6 +364,13 @@ group_mod_data = []
 masters.each do |photo|
 
   next if date_debug and !date_debug_ids.include?(photo['id'])
+  if resume = ENV['RESUME'].to_i and resume > 0
+    next if resume >= photo['id'].to_i
+    if resume == photo['id'].to_i
+      debug 1, "Resuming at RKVersion id #{resume}.".bold, true
+      debug 1, "WARNING: this will create incomplete postmortem SQL scripts.\nDon't use this if you need them. See README.md for details.".red.bold, true
+    end
+  end
 
   origpath = "Masters/#{photo['imagepath']}"
 
