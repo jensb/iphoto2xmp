@@ -97,6 +97,9 @@ The script can currently export the following metadata:
  * Smart Album rules into a separate text file so they can be recreated in the target application
    (the structure is not decoded yet but can be looked at)
  
+Digikam 5.x might require selecting all images and performing an "Item > Reread Image Metadata" operation before all metadata is visible in the application.
+It also requires activation of reading from XMP sidecar files (and writing to them if desired).
+
 
 ## Post Mortem operations (Digikam 4+ specific)
 Some image properties cannot (properly) be converted into metadata suitable for XMP sidecar files. They must be

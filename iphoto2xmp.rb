@@ -139,6 +139,17 @@ def date_compare(label, var, matches)
   stats
 end
 
+
+# convert pure decimal GPS string with what=="LAT"/"LNG", e.g. format_gps("53.107295", "LAT") -> "53,"
+def format_gps(latlng, what)
+  return "" unless latlng and what
+  whole = latlng.floor
+  frac = latlng - whole
+  #puts "#{whole}, #{frac}"
+  dir = what.downcase=='lat' ? 'N' : 'E'
+  sprintf '%i,%.6f%s', whole, frac*60, dir
+end
+
 # Calculate face position depending on rotation status and file type (special treatment for RW2).
 # Remember that iPhoto "y" values are counted from the *bottom*, like in mathematics! ("x" are from the left as usual.)
 
@@ -547,8 +558,8 @@ masters.each do |photo|
   # save GPS location info in XMP file (RKVersion::overridePlaceId -> Properties::RKPlace
   #       (user boundaryData?)
   # TODO: use Library::RKPlaceForVersion to get named Places for photo Versions
-  @longitude = photo['longitude']
-  @latitude  = photo['latitude']
+  @longitude = format_gps(photo['longitude'], 'lng')
+  @latitude  = format_gps(photo['latitude'], 'lat')
   if p = placelist[photo['place_id']]
     #@gpscity = ''
     #@gpsstate = ''
@@ -558,6 +569,7 @@ masters.each do |photo|
   else
     @gpslocation = nil
   end
+  debug 2, "  GPS : lat:#{@latitude} lng:#{@longitude}, #{@gpslocation}".violet, true
 
 
   # Get keywords. Convert iPhoto specific flags as keywords too.
@@ -717,14 +729,26 @@ masters.each do |photo|
 
   # TODO: additionally specify modified image as second version of original file in XMP (DerivedFrom?)
   unless(File.exist?(origxmppath))
-    @faces = photo['imagepath'] =~ /RW2$/ ? @rw2_faces : @orig_faces
+    if photo['imagepath'] =~ /RW2$/
+      @faces = @rw2_faces
+      @facecomment = "Using [raw] hacked RAW face rectangles"
+    else
+      @faces = @crop_faces
+      @facecomment = "Using [edit] RKVersionFaceRectangles"
+    end
     j = File.open(origxmppath, 'w')
     j.puts(ERB.new(xmp, 0, '>').result)
     j.close
     done_xmp[origxmppath] = true
   end
   if photo['version_number'].to_i == 1 and modxmppath and !File.exist?(modxmppath)
-    @faces = (@crop_faces.empty? or photo['face_rotation'].to_i != 0) ? @orig_faces : @crop_faces
+    if @crop_faces.empty? or photo['face_rotation'].to_i != 0
+      @faces = @orig_faces
+      @facecomment = "Using [orig] RKDetectedFace, RKFaceName"
+    else
+      @faces = @crop_faces
+      @facecomment = "Using [edit] RKVersionFaceRectangles"
+    end
     @uuid = photo['uuid']             # for this image, use modified image's uuid
     j = File.open(modxmppath,  'w')
     j.puts(ERB.new(xmp_mod, 0, '>').result)

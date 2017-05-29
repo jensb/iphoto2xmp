@@ -33,21 +33,22 @@
    exif:DateTimeOriginal="<%= @date_taken %>"
    exif:DateTimeDigitized="<%= @date_imported %>"
    exif:ExifVersion="0221"
+<% if !!@latitude %>
    exif:GPSLatitudeRef="N"
    exif:GPSLongitudeRef="E"
+   exif:GPSAltitudeRef="0"
    exif:GPSVersionID="2.0.0.0"
-   video:DateTimeOriginal="<%= @date_taken %>"
-<%# according to MWG guidelines, this is how to store dates. http://www.metadataworkinggroup.org/pdf/mwg_guidance.pdf#page=37 %>
-<% if !!@date_modified and @date_taken != @date_modified %>
-   xmp:ModifyDate="<%= @date_modified %>"
-   video:ModificationDate="<%= @date_modified %>"
-   exif:DateTime="<%= @date_modified %>"
-<% end %>
-<% if !!@latitude %>
    exif:GPSLatitude="<%= @latitude %>"
    exif:GPSLongitude="<%= @longitude %>"
    exif:GPSMapDatum="WGS-84"
 <% end %>
+<%# according to MWG guidelines, this is how to store dates. http://www.metadataworkinggroup.org/pdf/mwg_guidance.pdf#page=37 %>
+<% if !!@date_modified and @date_taken != @date_modified %>
+   exif:DateTime="<%= @date_modified %>"
+   xmp:ModifyDate="<%= @date_modified %>"
+   video:ModificationDate="<%= @date_modified %>"
+<% end %>
+   video:DateTimeOriginal="<%= @date_taken %>"
 <% if !!@gpscity %>
    photoshop:City="<%= @gpscity %>"
 <% end %>
@@ -130,6 +131,7 @@
 <% end %>
 
 <% if @faces.is_a?(Array) and !@faces.empty? %>
+<!-- <%= @facecomment %> -->
 
 <!--  Not required for Digikam and creates duplicate face tags, so disabled for now.
    <mwg-rs:Regions rdf:parseType="Resource">
