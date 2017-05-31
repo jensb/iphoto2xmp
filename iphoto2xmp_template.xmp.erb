@@ -137,7 +137,7 @@
 <% if @faces.is_a?(Array) and !@faces.empty? %>
 <!-- <%= @facecomment %> -->
 
-<!--  Not required for Digikam and creates duplicate face tags, so disabled for now.
+
    <mwg-rs:Regions rdf:parseType="Resource">
     <mwg-rs:RegionList>
      <rdf:Bag>
@@ -158,19 +158,7 @@
      </rdf:Bag>
     </mwg-rs:RegionList>
    </mwg-rs:Regions>
--->
 
-   <MP:RegionInfo rdf:parseType="Resource">
-    <MPRI:Regions>
-     <rdf:Bag>
-<% for face in @faces %>
-      <rdf:li
-       MPReg:Rectangle="<%= face['topleftx'] %>, <%= face['toplefty'] %>, <%= face['width'] %>, <%= face['height'] %>"
-       MPReg:PersonDisplayName="<%= face['name'] %>"/>
-<% end %>
-     </rdf:Bag>
-    </MPRI:Regions>
-   </MP:RegionInfo>
 <% end %>
 
    <dc:creator>
