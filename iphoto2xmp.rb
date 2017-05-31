@@ -45,6 +45,7 @@ class String
   def blue; "\e[34m#{self}\e[0m" end
   def cyan; "\e[36m#{self}\e[0m" end
   def violet; "\e[35m#{self}\e[0m" end
+  def grey; "\e[37m#{self}\e[0m" end
   def sqlclean; self.gsub(/\'/, "''").gsub(/%/, "\%") end
 end
 
@@ -349,8 +350,8 @@ folderhead, *folderdata = librarydb.execute2(
 folderlist  = folderdata.inject({}) {|h,folder| h[folder['modelId'].to_i] = folder; h }
 foldernames = folderdata.inject({}) {|h,folder| h[folder['modelId'].to_s] = folder['name']; h }
 folderlist.each {|k,v| folderlist[k]['folderPath'].gsub!(/\d*/, foldernames).gsub!(/^\/(.*)\/$/, '\1') }
-debug 2, "foldernames = #{foldernames.inspect}", true
-debug 2, "folderlist = #{folderlist.collect{|k,v| v['folderPath']}.join(', ')}", true
+debug 3, "foldernames: " + foldernames.inspect.grey, true
+debug 3, "folderlist: " + folderlist.collect{|k,v| v['folderPath']}.join(', ').grey, true
 
 
 # Export album metadata (mostly binary PLists) but so far nothing is done with it except save it.
@@ -361,7 +362,7 @@ albumhead, *albumdata = librarydb.execute2(
      AND uuid NOT LIKE '%Album%'")
 albumqdir = "#{outdir}/00_AlbumQueryData"
 File.directory?(albumqdir) || Dir.mkdir(albumqdir)
-debug 2, "Albumdata: writing #{albumdata.collect{|a| a['name'] }.join(', ')}", true
+debug 3, "Albumdata: " + albumdata.collect{|a| a['name'] }.join(', ').grey, true
 albumdata.each do |d|
   next if !d['name'] or d['name'] == ''
   ['filterData', 'queryData', 'viewData'].each do |datakey|
