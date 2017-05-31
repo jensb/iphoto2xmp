@@ -25,8 +25,12 @@
    xmp:CreateDate="<%= @date_imported %>"
    photoshop:DateCreated="<%= @date_taken %>"
    acdsee:rating="<%= @rating %>"
-   acdsee:caption="<%= @caption %>"
-   acdsee:notes="<%= @description %>"
+<% if !!@caption %>
+  acdsee:caption="<%= @caption.gsub(/"/, "'") %>"
+<% end %>
+<% if !!@description %>
+   acdsee:notes="<%= @description.gsub(/"/, "'") %>"
+<% end %>
    digiKam:ImageUniqueID="<%= @uuid %>"
    digiKam:PickLabel="<%= @hidden %>"
    digiKam:ColorLabel="<%= @flagged %>"
