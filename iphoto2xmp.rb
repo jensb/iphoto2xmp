@@ -151,16 +151,31 @@ def format_gps(latlng, what)
   sprintf '%i,%.6f%s', whole, frac*60, dir
 end
 
+
+# Calculate face rectangles for modified images. Much simpler since RKVersionFaceContent already contains converted rectangles.
+# Note that modfaces Y values seem to be conunted from the *bottom*!
+def calc_faces_edit(faces)
+  res = faces.collect do |face|
+    topleftx = '%.6f' % face['topLeftX']
+    toplefty = '%.6f' % face['topLeftY']
+    width    = '%.6f' % face['width']
+    height   = '%.6f' % face['height']
+    centerx  = '%.6f' % (topleftx.to_f + width.to_f/2)
+    centery  = '%.6f' % (toplefty.to_f + height.to_f/2)
+    {'mode' => 'FaceEdit ',
+      'topleftx' => topleftx, 'toplefty' => toplefty,
+      'centerx'  => centerx, 'centery' => centery, 'width' => width, 'height' => height,
+      'name' => "#{face['name']} [mod]", 'email' => face['email'] }
+  end
+  res.each {|f|
+    debug 3, "  ... #{f['mode']}: tl: #{f['topleftx']} #{f['toplefty']}, wh: #{f['width']} #{f['height']};\t#{f['name']}".grey, true
+  }
+  res
+end
+
+
 # Calculate face position depending on rotation status and file type (special treatment for RW2).
 # Remember that iPhoto "y" values are counted from the *bottom*, like in mathematics! ("x" are from the left as usual.)
-
-# Example:         image_dim   topLeftX  topLeftY  botRightX  botRightY  width   height
-# DB Library data  2520.3776   0.248     0.569     0.346      0.7
-# DB Faces   data
-#  -> XMP data 1:              0.3779    0.3771                          0.0904  0.1332   ()
-# DB Library data  2520.3776   0.3631    0.4089    0.2734     0.1824                      (masterId=26, faceKey=71 => S.B.)
-# DB Faces   data              0.1742    0.3313    0.265      0.4619
-#  -> XMP data 2:              0.2215    0.2569                          0.0941  0.1371   (S.B.)
 def calc_faces(faces, mwidth, mheight, frot=0, raw_factor_x=1, raw_factor_y=1)
   res = faces.collect do |face|
     topleftx = '%.6f' % (raw_factor_x * case frot
@@ -190,7 +205,6 @@ def calc_faces(faces, mwidth, mheight, frot=0, raw_factor_x=1, raw_factor_y=1)
                                          when 180 then (face['topLeftY'] - face['bottomRightY']).abs
                                          when 270 then (face['bottomRightX'] - face['topLeftX']).abs      # Verified OK
                                         end)
-
     centerx  = '%.6f' % (topleftx.to_f * raw_factor_x + width.to_f/2)
     centery  = '%.6f' % (toplefty.to_f * raw_factor_y + height.to_f/2)
     #if crop_startx>0 or crop_starty>0 or crop_width != mwidth or crop_height != mheight
@@ -204,7 +218,7 @@ def calc_faces(faces, mwidth, mheight, frot=0, raw_factor_x=1, raw_factor_y=1)
   end
   res.each {|f|
     str = f['mode'] || "Face#{frot}°"
-    debug 3, "#{str}:\ttl: #{f['topleftx']} #{f['toplefty']}, c:(#{f['centerx']} #{f['centery']}), wh:#{f['width']} #{f['height']};\t#{f['name']}", true
+    debug 3, "  ... #{str}: tl: #{f['topleftx']} #{f['toplefty']}, wh: #{f['width']} #{f['height']};\t#{f['name']}".grey, true
   }
   res
 end
@@ -610,10 +624,7 @@ masters.each do |photo|
 
   #
   # Add faces to BOTH original and edited images.
-  #
   # If edited image is cropped, modify face rectangle positions accordingly.
-  # TODO: both Library::RKVersionFaceContent and Faces::RKDetectedFace contain face rectangle data.
-  # Which is better?
   xmp_mod = xmp.dup
 
   # Link: Faces.apdb::RKDetectedFace::masterUuid == Library.apdb::RKMaster::uuid
@@ -638,11 +649,6 @@ masters.each do |photo|
       WHERE d.masterUuid='#{photo['master_uuid']}'
       ORDER BY d.modelId")  # LEFT JOIN because we also want unknown faces
 
-  faces.each do |face|
-    debug 3, sprintf(" ...    face: tl: %.6f %.6f, br: %.6f %.6f, wh: %.6f %.6f,  %s",
-      face['topLeftX'], face['topLeftY'], face['bottomRightX'], face['bottomRightY'], face['width'], face['height'], face['name']), true
-  end
-
 
   # Get face rectangles from modified images (cropped, rotated, etc). No need to calculate those manually.
   # This might be empty, in that case use list of unmodified faces.
@@ -652,11 +658,11 @@ masters.each do |photo|
            ,d.masterId       AS master_id
            ,d.faceKey        AS face_key
            ,d.faceRectLeft   AS topLeftX      -- use same naming scheme as in 'faces'
-           ,d.faceRectTop    AS bottomRightY
-           ,d.faceRectWidth  AS width         -- not used for now since faces doesn't contain these
-           ,d.faceRectHeight AS height        -- not used for now since faces doesn't contain these
+         ,1-d.faceRectTop    AS bottomRightY  -- Y values are counted from the bottom in this table!
+           ,d.faceRectWidth  AS width
+           ,d.faceRectHeight AS height
            ,d.faceRectWidth + d.faceRectLeft      AS bottomRightX
-           ,d.faceRectTop   + d.faceRectHeight    AS topLeftY
+         ,1-d.faceRectTop   - d.faceRectHeight    AS topLeftY
      FROM RKVersionFaceContent d
      WHERE d.versionId = '#{photo['id']}'
      ORDER BY d.versionId")
@@ -665,20 +671,32 @@ masters.each do |photo|
                'name' => (fnamelist[v['face_key'].to_i]['name'] rescue 'Unknown'),
                'email' => (fnamelist[v['face_key'].to_i]['email'] rescue '')})
   }
+
+  debug 3, "  ... Original Face DB data:", true
+  faces.each do |face|
+    debug 3, sprintf("  ...     face: tl: %.6f %.6f, wh: %.6f %.6f,  %s",
+      face['topLeftX'], face['topLeftY'], face['width'], face['height'], face['name']).grey, true
+  end
   modfaces_.each do |face|
-    debug 3, sprintf(" ... modface: tl: %.6f %.6f, br: %.6f %.6f, wh: %.6f %.6f,  %s",
-      face['topLeftX'], face['topLeftY'], face['bottomRightX'], face['bottomRightY'], face['width'], face['height'], face['name']), true
+    debug 3, sprintf("  ...  modface: tl: %.6f %.6f, wh: %.6f %.6f,  %s",
+      face['topLeftX'], face['topLeftY'], face['width'], face['height'], face['name']).grey, true
   end
 
   # calc_faces(faces, width, height, rotation, raw_factor_x=1, raw_factor_y=1)
   # Flipped images (90°, 180°, 270° by RKVersion.rotation) need to have their orig_faces flipped as well and do not need modfaces.
   # ... for flipped images, modfaces might contain incorrect face data!
   # StraightenCrop and/or Crop needs modfaces.
+  debug 3, "  ... After processing:", true
   width = photo['master_width'].to_i
   height = photo['master_height'].to_i
   @orig_faces = calc_faces(faces, width, height, photo['rotation'].to_i)
-  @rw2_faces  = calc_faces(faces, width, height, photo['rotation'].to_i, photo['raw_factor_w'] || 1, photo['raw_factor_h'] || 1)
-  @crop_faces = calc_faces(modfaces_, width, height)  #, photo['rotation'].to_i)
+  #@rw2_faces  = calc_faces(faces, width, height, photo['rotation'].to_i, photo['raw_factor_w'] || 1, photo['raw_factor_h'] || 1)
+  @crop_faces = calc_faces_edit(modfaces_)  #, photo['rotation'].to_i)
+
+  @r0_faces = calc_faces(faces, width, height, 0)
+  @r90_faces = calc_faces(faces, width, height, 90)
+  @r180_faces = calc_faces(faces, width, height, 180)
+  @r270_faces = calc_faces(faces, width, height, 270)
 
   ## FIXME Debugging only! Write all possible face rectangles (incl. duplicates) to photo.
   @all_faces = @orig_faces + @crop_faces
@@ -689,24 +707,23 @@ masters.each do |photo|
       @faces = @rw2_faces
       @facecomment = "Using [raw] hacked RAW face rectangles"
     else
-      @faces = @crop_faces
-      @facecomment = "Using [edit] RKVersionFaceRectangles"
+      @faces = @orig_faces
+      @facecomment = "Using [orig] RKDetectedFace, RKFaceName"
     end
-    @faces = @all_faces    ## FIXME: Debugging only!
+    #@faces = @all_faces    ## FIXME: Debugging only!
     j = File.open(origxmppath, 'w')
     j.puts(ERB.new(xmp, 0, '>').result)
     j.close
     done_xmp[origxmppath] = true
   end
   if photo['version_number'].to_i == 1 and modxmppath and !File.exist?(modxmppath)
-    if @crop_faces.empty? #or photo['rotation'].to_i != 0
+    if @crop_faces.empty?
       @faces = @orig_faces
       @facecomment = "Using [orig] RKDetectedFace, RKFaceName"
     else
       @faces = @crop_faces
       @facecomment = "Using [edit] RKVersionFaceRectangles"
     end
-    # @faces = @all_faces    ## FIXME: Debugging only!
     @uuid = photo['uuid']             # for this image, use modified image's uuid
     j = File.open(modxmppath,  'w')
     j.puts(ERB.new(xmp_mod, 0, '>').result)
