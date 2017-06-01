@@ -91,7 +91,7 @@ def link_photo(basedir, outdir, photo, imgfile, origfile)
     end
     FileUtils.ln(imgpath, destpath)
   else
-    $missing.puts(imgpath)
+    $missing.puts(imgpath) unless imgpath =~ /iLifeAssetManagement/
     $problems = true
   end
   # Work out the XMP sidecar location
@@ -167,28 +167,28 @@ def calc_faces(faces, mwidth, mheight, frot=0, raw_factor_x=1, raw_factor_y=1)
                                          when 0 then    face['topLeftX']
                                          when 90 then   face['bottomRightY']
                                          when 180 then  1 - face['bottomRightX']
-                                         when 270 then  1 - face['topLeftY']
+                                         when 270 then  1 - face['topLeftY']                              # Corrected
                                         end)
 
     toplefty = '%.6f' % (raw_factor_y * case frot
                                          when 0 then   1 - face['topLeftY']
-                                         when 90 then  1 - face['topLeftX']
+                                         when 90  then 1 - face['bottomRightX']
                                          when 180 then 1 - face['bottomRightY']
-                                         when 270 then face['bottomRightX']
+                                         when 270 then 1 - face['topLeftX']                               # Corrected
                                         end)
 
     width    = '%.6f' % (raw_factor_x * case frot
                                          when 0 then   (face['bottomRightX'] - face['topLeftX']).abs
                                          when 90 then  (face['topLeftY'] - face['bottomRightY']).abs
                                          when 180 then (face['bottomRightX'] - face['topLeftX']).abs
-                                         when 270 then (face['topLeftY'] - face['bottomRightY']).abs
+                                         when 270 then (face['topLeftY'] - face['bottomRightY']).abs      # Verified OK
                                         end)
 
     height   = '%.6f' % (raw_factor_y * case frot
                                          when 0 then   (face['topLeftY'] - face['bottomRightY']).abs
                                          when 90 then  (face['bottomRightX'] - face['topLeftX']).abs
                                          when 180 then (face['topLeftY'] - face['bottomRightY']).abs
-                                         when 270 then (face['bottomRightX'] - face['topLeftX']).abs
+                                         when 270 then (face['bottomRightX'] - face['topLeftX']).abs      # Verified OK
                                         end)
 
     centerx  = '%.6f' % (topleftx.to_f * raw_factor_x + width.to_f/2)
@@ -196,14 +196,15 @@ def calc_faces(faces, mwidth, mheight, frot=0, raw_factor_x=1, raw_factor_y=1)
     #if crop_startx>0 or crop_starty>0 or crop_width != mwidth or crop_height != mheight
     #  puts "  FaceCrop: topLeftX/Y=#{face['topLeftX']}/#{face['topLeftY'].to_f}, master_w/h=#{mwidth}/#{mheight}, crop_startx/y=#{crop_startx}/#{mheight-crop_starty}, crop_w/h=#{crop_width}/#{crop_height}"
     #end
-    {'mode' => raw_factor_x==1 ? face['mode'] : 'FaceRaw ',
+    mode = raw_factor_x==1 ? face['mode'] : 'FaceRaw '
+    {'mode' => mode,
      'topleftx' => topleftx, 'toplefty' => toplefty,
      'centerx'  => centerx, 'centery' => centery, 'width' => width, 'height' => height,
-     'name' => face['name'] || 'Unknown', 'email' => face['email'] }
+     'name' => "#{face['name']} [#{mode||frot}]" || 'Unknown', 'email' => face['email'] }
   end
   res.each {|f|
     str = f['mode'] || "Face#{frot}°"
-    debug 3, "  #{str}: #{f['topleftx']} / #{f['toplefty']} (#{f['centerx']} / #{f['centery']}) +#{f['width']} +#{f['height']};  #{f['name']}\t ", true
+    debug 3, "#{str}:\ttl: #{f['topleftx']} #{f['toplefty']}, c:(#{f['centerx']} #{f['centery']}), wh:#{f['width']} #{f['height']};\t#{f['name']}", true
   }
   res
 end
@@ -288,7 +289,8 @@ masterhead, *masters = librarydb.execute2(
         ,v.processedWidth AS processed_width    -- Width of processed (eg. cropped, rotated) image
 
         ,v.overridePlaceId AS place_id          -- modelId of Properties::RKPlace
-        ,v.faceDetectionRotationFromMaster AS face_rotation
+        ,v.faceDetectionRotationFromMaster AS face_rotation      -- don't know, maybe a hint for face detection algorithm
+        ,v.rotation AS rotation                 -- was the original image rotated?
    FROM RKVersion v
     LEFT JOIN RKFolder f ON v.projectUuid=f.uuid
     LEFT JOIN RKMaster m ON m.uuid = v.masterUuid
@@ -407,9 +409,9 @@ masters.each do |photo|
     end
   end
 
-  # Debugging to export a single image (or all images with a certain name)
+  # Debugging to export a single image (or all images matching a certain regexp)
   if caption = ENV['CAPTION']
-    next unless caption == photo['caption']
+    next unless photo['caption'] =~ /#{caption.gsub(/,/, '|')}/i       # caption can e.g. be 'IMG_1,IMG_2,...'
   end
 
   origpath = "Masters/#{photo['imagepath']}"
@@ -421,7 +423,7 @@ masters.each do |photo|
   # Preview can be in one of two directory structures (depending on iPhoto version). Try both.
   modpath1 = "Previews/#{photo['imagepath']}"
   modpath2 = "Previews/#{File.dirname(photo['imagepath'])}/#{photo['uuid']}/#{File.basename(photo['imagepath']).gsub(/PNG$|JPG$|RW2$/, 'jpg')}"
-  modpath = Dir.exist?(File.dirname("#{basedir}/#{modpath1}")) ? modpath1 : modpath2
+  modpath = File.exist?("#{basedir}/#{modpath1}") ? modpath1 : modpath2
   if photo['mediatype'] != 'VIDT' and !File.exist?("#{basedir}/#{modpath}")
     modpath = modpath.sub(/jpg$/, 'JPG')
   end
@@ -475,9 +477,9 @@ masters.each do |photo|
   if curr_roll != photo['rollname']
     # write debug output if required
     if p = photo['poster_version_uuid']
-      debug 1, "EVENT: #{photo['rollname']} (thumb: #{p[0..6]}…): #{parse_date(photo['roll_min_image_date'], photo['timezone'], '%Y-%m-%d')} .. #{parse_date(photo['roll_max_image_date'], photo['timezone'], '%Y-%m-%d')}".bold, true
+      debug 1, "\nEVENT: #{photo['rollname']} (thumb: #{p[0..6]}…): #{parse_date(photo['roll_min_image_date'], photo['timezone'], '%Y-%m-%d')} .. #{parse_date(photo['roll_max_image_date'], photo['timezone'], '%Y-%m-%d')}".bold, true
     else
-      debug 1, "EVENT: #{photo['rollname'] || "(NO ROLL NAME)"} (?)".bold, true
+      debug 1, "\nEVENT: #{photo['rollname'] || "(NO ROLL NAME)"} (?)".bold, true
     end
     curr_roll = photo['rollname']
   end
@@ -490,16 +492,16 @@ masters.each do |photo|
   debug 2, "  Desc: #{photodescs[photo['id'].to_i]}".green, true  if photodescs[photo['id'].to_i]
   debug 2, "  Orig: #{photo['master_height']}x#{photo['master_width']} (#{'%.4f' % photo['raw_factor_h']}/#{'%.4f' % photo['raw_factor_w']}), #{origpath} (#{File.exist?("#{basedir}/#{origpath}") ? 'found'.green : 'missing'.red})", true
   debug 3, "     => #{origdestpath}".cyan, true
-  if photo['face_rotation'].to_i != 0
-    debug 2, "  Flip: #{photo['face_rotation']}°".blue, true
+  if photo['face_rotation'].to_i != 0 or photo['rotation'] != 0
+    debug 2, "  Flip: photo #{photo['rotation']}°, face(s): #{photo['face_rotation']}°".blue, true
   end
   # Test for modified images.
-  #debug 2, "  Mod1: #{modpath1}, Dir:", false
-  #debug 2, Dir.exist?(File.dirname("#{basedir}/#{modpath1}")) ? 'OK'.green : 'missing'.red, false
-  #debug 2, File.exist?("#{basedir}/#{modpath1}") ? ', file OK'.green : ', file missing'.red, true
-  #debug 2, "  Mod2: #{modpath2} ", false
-  #debug 2, Dir.exist?(File.dirname("#{basedir}/#{modpath2}")) ? 'OK'.green : 'missing'.red, false
-  #debug 2, File.exist?("#{basedir}/#{modpath2}") ? ', file OK'.green : ', file missing'.red, true
+  debug 2, "  Mod1: #{modpath1}, Dir:", false
+  debug 2, Dir.exist?(File.dirname("#{basedir}/#{modpath1}")) ? 'OK'.green : 'missing'.red, false
+  debug 2, File.exist?("#{basedir}/#{modpath1}") ? ', file OK'.green : ', file missing'.red, true
+  debug 2, "  Mod2: #{modpath2} ", false
+  debug 2, Dir.exist?(File.dirname("#{basedir}/#{modpath2}")) ? 'OK'.green : 'missing'.red, false
+  debug 2, File.exist?("#{basedir}/#{modpath2}") ? ', file OK'.green : ', file missing'.red, true
   if modxmppath    # modified version *should* exist
     debug 2, "  Mod : #{photo['processed_height']}x#{photo['processed_width']}, #{modpath} ", false
     debug 2, File.exist?("#{basedir}/#{modpath}") ? '(found)'.green : '(missing)'.red, true
@@ -658,7 +660,7 @@ masters.each do |photo|
           # ProSharopen, iPhotoRedEye, Retouch, iPhotoEffects, and possibly others
       end
     end # edits.each
-    debug 3, '', true
+    debug 3, '', true if edits.count > 0
   end
 
 
@@ -678,6 +680,8 @@ masters.each do |photo|
          ,d.faceKey               -- --> RKFaceName::faceKey
          ,d.topLeftX    ,d.topLeftY    ,d.topRightX    ,d.topRightY     -- *relative* coordinates within *original, non-rotated* image (0..1)
          ,d.bottomLeftX ,d.bottomLeftY ,d.bottomRightX ,d.bottomRightY  -- *relative* coordinates within *original, non-rotated* image (0..1)
+         ,abs(d.topLeftX - d.bottomRightX) AS width
+         ,abs(d.topLeftY - d.bottomRightY) AS height
          ,d.confidence
          ,d.rejected
          ,d.ignore
@@ -690,6 +694,11 @@ masters.each do |photo|
       WHERE d.masterUuid='#{photo['master_uuid']}'
       ORDER BY d.modelId")  # LEFT JOIN because we also want unknown faces
 
+  faces.each do |face|
+    debug 3, sprintf(" ...    face: tl: %.6f %.6f, br: %.6f %.6f, wh: %.6f %.6f,  %s",
+      face['topLeftX'], face['topLeftY'], face['bottomRightX'], face['bottomRightY'], face['width'], face['height'], face['name']), true
+  end
+
 
   # Get face rectangles from modified images (cropped, rotated, etc). No need to calculate those manually.
   # This might be empty, in that case use list of unmodified faces.
@@ -700,33 +709,35 @@ masters.each do |photo|
            ,d.faceKey        AS face_key
            ,d.faceRectLeft   AS topLeftX      -- use same naming scheme as in 'faces'
            ,d.faceRectTop    AS bottomRightY
-           ,d.faceRectWidth + d.faceRectLeft  AS bottomRightX
-           ,d.faceRectTop+d.faceRectHeight    AS topLeftY
+           ,d.faceRectWidth  AS width         -- not used for now since faces doesn't contain these
+           ,d.faceRectHeight AS height        -- not used for now since faces doesn't contain these
+           ,d.faceRectWidth + d.faceRectLeft      AS bottomRightX
+           ,d.faceRectTop   + d.faceRectHeight    AS topLeftY
      FROM RKVersionFaceContent d
      WHERE d.versionId = '#{photo['id']}'
      ORDER BY d.versionId")
-#  puts "  ... modfaces = #{modfaces.collect {|f| f["face_key"] }.sort}"
-#  puts "  ... modfaces = #{modfaces}"
   modfaces_ = modfaces.collect { |v|
      v.update({'mode' => 'FaceEdit',
                'name' => (fnamelist[v['face_key'].to_i]['name'] rescue 'Unknown'),
                'email' => (fnamelist[v['face_key'].to_i]['email'] rescue '')})
-     #modfaces[k]["name"] = fnamelist[modfaces[k]["face_key"].to_i]["name"] rescue "Unknown"
-     #modfaces[k]["email"] = fnamelist[modfaces[k]["face_key"].to_i]["email"] rescue ""
   }
-#  puts "  ... fnamelist = #{fnamelist.inspect}"
-#  puts "  ... modfaces_ = #{modfaces_.inspect}"
+  modfaces_.each do |face|
+    debug 3, sprintf(" ... modface: tl: %.6f %.6f, br: %.6f %.6f, wh: %.6f %.6f,  %s",
+      face['topLeftX'], face['topLeftY'], face['bottomRightX'], face['bottomRightY'], face['width'], face['height'], face['name']), true
+  end
 
   # calc_faces(faces, width, height, rotation, raw_factor_x=1, raw_factor_y=1)
-  # Flipped images (90°, 180°, 270° by EXIF tag) need to have their orig_faces flipped as well and do not need modfaces.
+  # Flipped images (90°, 180°, 270° by RKVersion.rotation) need to have their orig_faces flipped as well and do not need modfaces.
   # ... for flipped images, modfaces might contain incorrect face data!
   # StraightenCrop and/or Crop needs modfaces.
   width = photo['master_width'].to_i
   height = photo['master_height'].to_i
-  @orig_faces = calc_faces(faces, width, height, photo['face_rotation'].to_i)
-  @rw2_faces  = calc_faces(faces, width, height, photo['face_rotation'].to_i, photo['raw_factor_w'] || 1, photo['raw_factor_h'] || 1)
-  @crop_faces = calc_faces(modfaces_, width, height, photo['face_rotation'].to_i)
+  @orig_faces = calc_faces(faces, width, height, photo['rotation'].to_i)
+  @rw2_faces  = calc_faces(faces, width, height, photo['rotation'].to_i, photo['raw_factor_w'] || 1, photo['raw_factor_h'] || 1)
+  @crop_faces = calc_faces(modfaces_, width, height)  #, photo['rotation'].to_i)
 
+  ## FIXME Debugging only! Write all possible face rectangles (incl. duplicates) to photo.
+  @all_faces = @orig_faces + @crop_faces
 
   # TODO: additionally specify modified image as second version of original file in XMP (DerivedFrom?)
   unless(File.exist?(origxmppath))
@@ -737,24 +748,28 @@ masters.each do |photo|
       @faces = @crop_faces
       @facecomment = "Using [edit] RKVersionFaceRectangles"
     end
+    @faces = @all_faces    ## FIXME: Debugging only!
     j = File.open(origxmppath, 'w')
     j.puts(ERB.new(xmp, 0, '>').result)
     j.close
     done_xmp[origxmppath] = true
   end
   if photo['version_number'].to_i == 1 and modxmppath and !File.exist?(modxmppath)
-    if @crop_faces.empty? or photo['face_rotation'].to_i != 0
+    if @crop_faces.empty? #or photo['rotation'].to_i != 0
       @faces = @orig_faces
       @facecomment = "Using [orig] RKDetectedFace, RKFaceName"
     else
       @faces = @crop_faces
       @facecomment = "Using [edit] RKVersionFaceRectangles"
     end
+    # @faces = @all_faces    ## FIXME: Debugging only!
     @uuid = photo['uuid']             # for this image, use modified image's uuid
     j = File.open(modxmppath,  'w')
     j.puts(ERB.new(xmp_mod, 0, '>').result)
     j.close
   end
+
+  debug 3, '', true
 
 end
 
