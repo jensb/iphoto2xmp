@@ -212,31 +212,6 @@ end
 
 
 
-# Check date matching mode.
-date_debug = nil
-date_debug_ids = []
-date_debug_stats = {}
-#if ENV['DATES'] and dates = File.read('photodates-in-iPhoto.tsv').split(/[\r\n]+/).collect.with_index {|row,ri|
-#      row.split(/[\t,]/).collect.with_index { |cell,ci|
-#        (ri==0 or ci==0) ? cell : DateTime.parse(cell)
-#      }
-#    }
-if ENV['DATES']
-  ENV['DEBUG'] = '1'
-  require 'csv'
-  date_debug = CSV.read(ENV['DATES'], headers: true)
-  date_debug.each { |row| row.each do |k,v|
-    #debug 1, "  Error parsing CSV: #{row.inspect}".red, true
-    row[k] = DateTime.parse(v).to_time unless %w(caption v_id).include?(k)
-  end }
-  date_debug_ids = date_debug.collect {|row| row["v_id"].to_i }
-  puts "Error: no (detectable) photo entries in #{ENV['DATES']}. Check format." if date_debug_ids.empty?
-  debug 1, "Entering date debug mode. Reading #{ENV['DATES']} as CSV, #{date_debug.size} rows.".bold.red, true
-  debug 1, "Photo IDs: #{date_debug_ids.join(", ")}".red, true
-
-end
-
-
 ###################################################################################################
 # Stage 1: Get main image info.
 # Cannot use AlbumData.xml because a lot of info is not listed at all in AlbumData.xml but should be exported.
@@ -400,7 +375,6 @@ group_mod_data = []
 masters.each do |photo|
   bar.increment unless ENV['DEBUG']
 
-  next if date_debug and !date_debug_ids.include?(photo['id'])
   if resume = ENV['RESUME'].to_i and resume > 0
     next if resume >= photo['id'].to_i
     if resume == photo['id'].to_i
@@ -496,46 +470,16 @@ masters.each do |photo|
     debug 2, "  Flip: photo #{photo['rotation']}°, face(s): #{photo['face_rotation']}°".blue, true
   end
   # Test for modified images.
-  debug 2, "  Mod1: #{modpath1}, Dir:", false
-  debug 2, Dir.exist?(File.dirname("#{basedir}/#{modpath1}")) ? 'OK'.green : 'missing'.red, false
-  debug 2, File.exist?("#{basedir}/#{modpath1}") ? ', file OK'.green : ', file missing'.red, true
-  debug 2, "  Mod2: #{modpath2} ", false
-  debug 2, Dir.exist?(File.dirname("#{basedir}/#{modpath2}")) ? 'OK'.green : 'missing'.red, false
-  debug 2, File.exist?("#{basedir}/#{modpath2}") ? ', file OK'.green : ', file missing'.red, true
+  #debug 2, "  Mod1: #{modpath1}, Dir:", false
+  #debug 2, Dir.exist?(File.dirname("#{basedir}/#{modpath1}")) ? 'OK'.green : 'missing'.red, false
+  #debug 2, File.exist?("#{basedir}/#{modpath1}") ? ', file OK'.green : ', file missing'.red, true
+  #debug 2, "  Mod2: #{modpath2} ", false
+  #debug 2, Dir.exist?(File.dirname("#{basedir}/#{modpath2}")) ? 'OK'.green : 'missing'.red, false
+  #debug 2, File.exist?("#{basedir}/#{modpath2}") ? ', file OK'.green : ', file missing'.red, true
   if modxmppath    # modified version *should* exist
     debug 2, "  Mod : #{photo['processed_height']}x#{photo['processed_width']}, #{modpath} ", false
     debug 2, File.exist?("#{basedir}/#{modpath}") ? '(found)'.green : '(missing)'.red, true
     debug 2, "     => #{moddestpath}".cyan, true  if File.exist?("#{basedir}/#{modpath}")
-  end
-
-  if date_debug    # debuglevel 3 is implicit
-    photo_match = date_debug.find {|row| row['v_id'].to_i == photo['id'].to_i }
-    %w(taken edited imported).each {|w| debug 1, "  #{w.ljust(30)}: #{photo_match[w]}".violet, true }
-
-    # This seems to be the "Last Modified" timestamp - if different from "Taken at"
-    #date_compare("m.imageDate", parse_date(photo['datem'], photo['timezone']), photo_match)
-    # This seems to be the "Taken at" timestamp.
-    date_compare("v.imageDate", parse_date(photo['date_taken'], photo['timezone']), photo_match)
-    # This seems to be the "Last Modified" timestamp.
-    date_compare("v.exportImageChangeDate", parse_date(photo['date_modified'], photo['timezone'], nil, true), photo_match)
-
-    # This seems to be the "Imported at" timestamp.
-    date_compare("m.createDate", parse_date(photo['date_imported'], photo['timezone'], nil, true), photo_match)
-    #date_compare("v.createDate", parse_date(photo['date_imported'], photo['timezone'], nil, true), photo_match)
-    #date_compare("Master file birthtime", File.birthtime(File.join(basedir, origpath)), photo_match)
-    #date_compare("Versions file birthtime", File.birthtime(File.join(basedir, modpath)), photo_match) if File.exist?(File.join(basedir, modpath))
-
-    # These following are *sometimes* equal to the "Edited" timestamp, however they don't use the photo's time zone.
-    # exportImageChangeDate seems to be the dated displayed as "Edited" when the first two are identical.
-    #date_compare("m.fileCreationDate", parse_date(photo['date_filecreation'], photo['timezone'], nil, true), photo_match)
-    #date_compare("m.fileModificationDate", parse_date(photo['date_filemod'], photo['timezone'], nil, true), photo_match)
-    #date_compare("f.createDate", parse_date(photo['date_foldercreation'], photo['timezone'], nil, true), photo_match)
-
-    # This is the "Imported at" timestamp, but import groups were only introduced in 2013-08 and later - before, the imported date was (???).
-    #ti = DateTime.parse(photo['date_importgroup']).to_time
-    #ti -= ti.utc_offset
-    #date_compare("i.imageDate", ti, photo_match)
-    next   # Do not export anything, just ouptut the photo metainfo.
   end
 
   #
@@ -775,7 +719,7 @@ end
 
 eventmetafile.close
 
-exit if date_debug or ENV['CAPTION']
+exit if ENV['CAPTION']
 
 # Write grouping information to SQL file for Digikam.
 # Group data into blocks of 1000 inserts otherwise sqlite will barf.
