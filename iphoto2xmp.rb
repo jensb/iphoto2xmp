@@ -175,8 +175,7 @@ end
 
 
 # Calculate face position depending on rotation status and file type (special treatment for RW2).
-# Remember that iPhoto "y" values are counted from the *bottom*, like in mathematics! ("x" are from the left as usual.)
-def calc_faces(faces, mwidth, mheight, frot=0, raw_factor_x=1, raw_factor_y=1)
+def calc_faces(faces, frot=0, raw_factor_x=1, raw_factor_y=1)
   res = faces.collect do |face|
     topleftx = '%.6f' % (raw_factor_x * case frot
                                          when 0 then    face['topLeftX']
@@ -194,22 +193,19 @@ def calc_faces(faces, mwidth, mheight, frot=0, raw_factor_x=1, raw_factor_y=1)
 
     width    = '%.6f' % (raw_factor_x * case frot
                                          when 0 then   (face['bottomRightX'] - face['topLeftX']).abs
-                                         when 90 then  (face['topLeftY'] - face['bottomRightY']).abs
+                                         when 90 then  (face['bottomRightY'] - face['topLeftY']).abs
                                          when 180 then (face['bottomRightX'] - face['topLeftX']).abs
-                                         when 270 then (face['topLeftY'] - face['bottomRightY']).abs      # Verified OK
+                                         when 270 then (face['bottomRightY'] - face['topLeftY']).abs      # Verified OK
                                         end)
 
     height   = '%.6f' % (raw_factor_y * case frot
-                                         when 0 then   (face['topLeftY'] - face['bottomRightY']).abs
+                                         when 0 then   (face['bottomRightY'] - face['topLeftY']).abs
                                          when 90 then  (face['bottomRightX'] - face['topLeftX']).abs
-                                         when 180 then (face['topLeftY'] - face['bottomRightY']).abs
+                                         when 180 then (face['bottomRightY'] - face['topLeftY']).abs
                                          when 270 then (face['bottomRightX'] - face['topLeftX']).abs      # Verified OK
                                         end)
     centerx  = '%.6f' % (topleftx.to_f * raw_factor_x + width.to_f/2)
     centery  = '%.6f' % (toplefty.to_f * raw_factor_y + height.to_f/2)
-    #if crop_startx>0 or crop_starty>0 or crop_width != mwidth or crop_height != mheight
-    #  puts "  FaceCrop: topLeftX/Y=#{face['topLeftX']}/#{face['topLeftY'].to_f}, master_w/h=#{mwidth}/#{mheight}, crop_startx/y=#{crop_startx}/#{mheight-crop_starty}, crop_w/h=#{crop_width}/#{crop_height}"
-    #end
     mode = raw_factor_x==1 ? face['mode'] : 'FaceRaw '
     {'mode' => mode,
      'topleftx' => topleftx, 'toplefty' => toplefty,
@@ -382,6 +378,8 @@ xmp_template = File.read("#{File.expand_path(File.dirname(__FILE__))}/iphoto2xmp
 
 eventmetafile = File.open("#{outdir}/event_metadata.sql", 'w')
 group_mod_data = []
+
+face_csv_list = []
 
 # iPhoto almost always stores a second version (Preview) of every image. In my case, out of 41000 images
 # only four had just a single version and one had six versions (print projects). So we can safely assume
@@ -629,14 +627,18 @@ masters.each do |photo|
 
   # Link: Faces.apdb::RKDetectedFace::masterUuid == Library.apdb::RKMaster::uuid
   facehead, *faces = facedb.execute2(
-      "SELECT d.modelId             -- primary key
-         ,d.uuid AS detect_uuid   -- primary key
-         ,d.masterUuid            -- --> Library::RKMaster::uuid
-         ,d.faceKey               -- --> RKFaceName::faceKey
-         ,d.topLeftX    ,d.topLeftY    ,d.topRightX    ,d.topRightY     -- *relative* coordinates within *original, non-rotated* image (0..1)
-         ,d.bottomLeftX ,d.bottomLeftY ,d.bottomRightX ,d.bottomRightY  -- *relative* coordinates within *original, non-rotated* image (0..1)
+      "SELECT d.modelId               -- primary key
+         ,d.uuid AS detect_uuid       -- primary key
+         ,d.masterUuid                -- --> Library::RKMaster::uuid
+         ,d.faceKey AS face_key       -- --> RKFaceName::faceKey
+          -- *relative* coordinates within *original, non-rotated* image (0..1)
+          -- Y values are counted from the bottom in iPhoto, but X values are counted from the left like usual!
+         ,d.topLeftX    ,1-d.topLeftY    AS topLeftY   ,d.topRightX    ,1-d.topRightY    AS topRightY
+         ,d.bottomLeftX ,1-d.bottomLeftY AS bottomLeftY,d.bottomRightX ,1-d.bottomRightY AS bottomRightY
          ,abs(d.topLeftX - d.bottomRightX) AS width
          ,abs(d.topLeftY - d.bottomRightY) AS height
+         ,d.width           AS image_width          -- TODO: check whether face was meant to be rotated?
+         ,d.height          AS image_height
          ,d.confidence
          ,d.rejected
          ,d.ignore
@@ -666,43 +668,48 @@ masters.each do |photo|
      FROM RKVersionFaceContent d
      WHERE d.versionId = '#{photo['id']}'
      ORDER BY d.versionId")
+
+  facekeys = modfaces.collect {|v| v['face_key'] }
   modfaces_ = modfaces.collect { |v|
      v.update({'mode' => 'FaceEdit',
-               'name' => (fnamelist[v['face_key'].to_i]['name'] rescue 'Unknown'),
+               'name' => (fnamelist[v['face_key'].to_i]['name'] rescue ''),
                'email' => (fnamelist[v['face_key'].to_i]['email'] rescue '')})
   }
 
   debug 3, "  ... Original Face DB data:", true
   faces.each do |face|
-    debug 3, sprintf("  ...     face: tl: %.6f %.6f, wh: %.6f %.6f,  %s",
-      face['topLeftX'], face['topLeftY'], face['width'], face['height'], face['name']).grey, true
+    debug 3, sprintf("  ...     face: tl: %.6f %.6f, wh: %.6f %.6f,  %s  (%i)",
+      face['topLeftX'], face['topLeftY'], face['width'], face['height'], face['name'], face['face_key']).grey, true
   end
   modfaces_.each do |face|
-    debug 3, sprintf("  ...  modface: tl: %.6f %.6f, wh: %.6f %.6f,  %s",
-      face['topLeftX'], face['topLeftY'], face['width'], face['height'], face['name']).grey, true
+    debug 3, sprintf("  ...  modface: tl: %.6f %.6f, wh: %.6f %.6f,  %s  (%i)",
+      face['topLeftX'], face['topLeftY'], face['width'], face['height'], face['name'], face['face_key']).grey, true
   end
 
-  # calc_faces(faces, width, height, rotation, raw_factor_x=1, raw_factor_y=1)
+  # Debug to check for matches: For each face, output CSV. Format see after main loop.
+  face_csv_list << facekeys.collect do |fn|
+    oface = faces.find {|f| f['face_key'] == fn }#  ; puts oface.inspect
+    mface = modfaces_.find {|f| f['face_key'] == fn }#  ; puts mface.inspect
+    sprintf("%s,%s,%s,%s,%s,%s,%s,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f",
+      photo['id'].to_s, photo['caption'], photo['rotation'].to_s, photo['face_rotation'].to_s, '', mface['name'], fn,
+        oface['topLeftX'], oface['topLeftY'], oface['width'], oface['height'],
+        mface['topLeftX'], mface['topLeftY'], mface['width'], mface['height']
+       )
+  end
+
+  # calc_faces(faces, rotation, raw_factor_x=1, raw_factor_y=1)
   # Flipped images (90°, 180°, 270° by RKVersion.rotation) need to have their orig_faces flipped as well and do not need modfaces.
   # ... for flipped images, modfaces might contain incorrect face data!
   # StraightenCrop and/or Crop needs modfaces.
   debug 3, "  ... After processing:", true
   width = photo['master_width'].to_i
   height = photo['master_height'].to_i
-  @orig_faces = calc_faces(faces, width, height, photo['rotation'].to_i)
-  #@rw2_faces  = calc_faces(faces, width, height, photo['rotation'].to_i, photo['raw_factor_w'] || 1, photo['raw_factor_h'] || 1)
-  @crop_faces = calc_faces_edit(modfaces_)  #, photo['rotation'].to_i)
-
-  @r0_faces = calc_faces(faces, width, height, 0)
-  @r90_faces = calc_faces(faces, width, height, 90)
-  @r180_faces = calc_faces(faces, width, height, 180)
-  @r270_faces = calc_faces(faces, width, height, 270)
-
-  ## FIXME Debugging only! Write all possible face rectangles (incl. duplicates) to photo.
-  @all_faces = @orig_faces + @crop_faces
+  @orig_faces = calc_faces(faces,  photo['rotation'].to_i)
+  @rw2_faces  = calc_faces(faces, photo['rotation'].to_i, photo['raw_factor_w'] || 1, photo['raw_factor_h'] || 1)
+  @crop_faces = calc_faces_edit(modfaces_)
 
   # TODO: additionally specify modified image as second version of original file in XMP (DerivedFrom?)
-  unless(File.exist?(origxmppath))
+  unless(File.exist?(origxmppath))         # don't overwrite existing XMP - right now, kind of pointless but anyway
     if photo['imagepath'] =~ /RW2$/
       @faces = @rw2_faces
       @facecomment = "Using [raw] hacked RAW face rectangles"
@@ -710,7 +717,6 @@ masters.each do |photo|
       @faces = @orig_faces
       @facecomment = "Using [orig] RKDetectedFace, RKFaceName"
     end
-    #@faces = @all_faces    ## FIXME: Debugging only!
     j = File.open(origxmppath, 'w')
     j.puts(ERB.new(xmp, 0, '>').result)
     j.close
@@ -735,6 +741,11 @@ masters.each do |photo|
 end
 
 eventmetafile.close
+
+unless face_csv_list.empty?
+  debug 3, "vers_id,caption,rotation,face_rotation,visible_rot,face_name,face_key,face_tlx,face_tly,face_w,face_h,modface_tlx,modface_tly,modface_w,modface_h", true
+  debug 3, face_csv_list.flatten.join("\n")
+end
 
 exit if ENV['CAPTION']
 
