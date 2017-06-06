@@ -177,33 +177,34 @@ end
 # Calculate face position depending on rotation status and file type (special treatment for RW2).
 def calc_faces(faces, frot=0, raw_factor_x=1, raw_factor_y=1)
   res = faces.collect do |face|
-    topleftx = '%.6f' % (raw_factor_x * case frot
-                                         when 0 then    face['topLeftX']
-                                         when 90 then   face['bottomRightY']
-                                         when 180 then  1 - face['bottomRightX']
-                                         when 270 then  1 - face['topLeftY']                              # Corrected
-                                        end)
-
-    toplefty = '%.6f' % (raw_factor_y * case frot
-                                         when 0 then   1 - face['topLeftY']
-                                         when 90  then 1 - face['bottomRightX']
-                                         when 180 then 1 - face['bottomRightY']
-                                         when 270 then 1 - face['topLeftX']                               # Corrected
-                                        end)
-
     width    = '%.6f' % (raw_factor_x * case frot
-                                         when 0 then   (face['bottomRightX'] - face['topLeftX']).abs
-                                         when 90 then  (face['bottomRightY'] - face['topLeftY']).abs
-                                         when 180 then (face['bottomRightX'] - face['topLeftX']).abs
-                                         when 270 then (face['bottomRightY'] - face['topLeftY']).abs      # Verified OK
-                                        end)
+      when 0 then   (face['bottomRightX'] - face['topLeftX']).abs
+      when 90 then  (face['bottomRightY'] - face['topLeftY']).abs
+      when 180 then (face['bottomRightX'] - face['topLeftX']).abs
+      when 270 then (face['bottomRightY'] - face['topLeftY']).abs      # Verified OK
+    end)
 
     height   = '%.6f' % (raw_factor_y * case frot
-                                         when 0 then   (face['bottomRightY'] - face['topLeftY']).abs
-                                         when 90 then  (face['bottomRightX'] - face['topLeftX']).abs
-                                         when 180 then (face['bottomRightY'] - face['topLeftY']).abs
-                                         when 270 then (face['bottomRightX'] - face['topLeftX']).abs      # Verified OK
-                                        end)
+      when 0 then   (face['bottomRightY'] - face['topLeftY']).abs
+      when 90 then  (face['bottomRightX'] - face['topLeftX']).abs
+      when 180 then (face['bottomRightY'] - face['topLeftY']).abs
+      when 270 then (face['bottomRightX'] - face['topLeftX']).abs      # Verified OK
+    end)
+
+    topleftx = '%.6f' % (raw_factor_x * case frot
+      when 0 then    face['topLeftX']
+      when 90 then   face['bottomRightY']
+      when 180 then  1 - face['bottomRightX'] - width.to_f
+      when 270 then  1 - face['topLeftY']                              # Corrected
+    end)
+
+    toplefty = '%.6f' % (raw_factor_y * case frot
+      when 0 then   face['topLeftY']
+      when 90  then 1 - face['bottomRightX']
+      when 180 then 1 - face['bottomRightY'] - height.to_f
+      when 270 then 1 - face['topLeftX']                               # Corrected
+    end)
+
     centerx  = '%.6f' % (topleftx.to_f * raw_factor_x + width.to_f/2)
     centery  = '%.6f' % (toplefty.to_f * raw_factor_y + height.to_f/2)
     mode = raw_factor_x==1 ? face['mode'] : 'FaceRaw '
