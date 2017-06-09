@@ -652,8 +652,8 @@ masters.each do |photo|
           -- Y values are counted from the bottom in iPhoto, but X values are counted from the left like usual!
          ,d.topLeftX    ,1-d.topLeftY    AS topLeftY   ,d.topRightX    ,1-d.topRightY    AS topRightY
          ,d.bottomLeftX ,1-d.bottomLeftY AS bottomLeftY,d.bottomRightX ,1-d.bottomRightY AS bottomRightY
-         ,abs(d.topLeftX - d.bottomRightX) AS width
-         ,abs(d.topLeftY - d.bottomRightY) AS height
+         ,abs(d.topLeftX - d.topRightX) AS width
+         ,abs(d.topLeftY - d.bottomleftY) AS height
          ,d.width           AS image_width          -- TODO: check whether face was meant to be rotated?
          ,d.height          AS image_height
          ,d.faceDirectionAngle  AS face_dir_angle
