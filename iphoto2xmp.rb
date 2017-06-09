@@ -156,19 +156,21 @@ end
 # Note that modfaces Y values seem to be conunted from the *bottom*!
 def calc_faces_edit(faces)
   res = faces.collect do |face|
-    topleftx = '%.6f' % face['topLeftX']
-    toplefty = '%.6f' % face['topLeftY']
-    width    = '%.6f' % face['width']
-    height   = '%.6f' % face['height']
-    centerx  = '%.6f' % (topleftx.to_f + width.to_f/2)
-    centery  = '%.6f' % (toplefty.to_f + height.to_f/2)
+    topleftx = face['topLeftX']
+    toplefty = face['topLeftY']
+    width    = face['width']
+    height   = face['height']
+    centerx  = topleftx + width/2
+    centery  = toplefty + height/2
     {'mode' => 'FaceEdit ',
       'topleftx' => topleftx, 'toplefty' => toplefty,
       'centerx'  => centerx, 'centery' => centery, 'width' => width, 'height' => height,
       'name' => "#{face['name']} [mod]", 'email' => face['email'] }
   end
   res.each {|f|
-    debug 3, "  ... #{f['mode']}: tl: #{f['topleftx']} #{f['toplefty']}, wh: #{f['width']} #{f['height']};\t#{f['name']}".grey, true
+    debug 3, sprintf("  ... %s: tl: %.6f %.6f, wh: %.6f %.6f;\t%s",
+              f['mode'], f['topleftx'], f['toplefty'], f['width'], f['height'], f['name']).grey, true
+    #debug 3, "  ... #{f['mode']}: tl: #{f['topleftx']} #{f['toplefty']}, wh: #{f['width']} #{f['height']};\t#{f['name']}".grey, true
   }
   res
 end
@@ -177,36 +179,36 @@ end
 # Calculate face position depending on rotation status and file type (special treatment for RW2).
 def calc_faces(faces, frot=0, raw_factor_x=1, raw_factor_y=1)
   res = faces.collect do |face|
-    width    = '%.6f' % (raw_factor_x * case frot
+    width    = (raw_factor_x * case frot
       when 0 then   (face['bottomRightX'] - face['topLeftX']).abs
-      when 90 then  (face['bottomRightY'] - face['topLeftY']).abs
+      when 90 then  (face['bottomRightX'] - face['topLeftX']).abs
       when 180 then (face['bottomRightX'] - face['topLeftX']).abs
       when 270 then (face['bottomRightY'] - face['topLeftY']).abs      # Verified OK
     end)
 
-    height   = '%.6f' % (raw_factor_y * case frot
+    height   = (raw_factor_y * case frot
       when 0 then   (face['bottomRightY'] - face['topLeftY']).abs
-      when 90 then  (face['bottomRightX'] - face['topLeftX']).abs
+      when 90 then  (face['bottomRightY'] - face['topLeftY']).abs
       when 180 then (face['bottomRightY'] - face['topLeftY']).abs
       when 270 then (face['bottomRightX'] - face['topLeftX']).abs      # Verified OK
     end)
 
-    topleftx = '%.6f' % (raw_factor_x * case frot
+    topleftx = (raw_factor_x * case frot
       when 0 then    face['topLeftX']
-      when 90 then   face['bottomRightY']
-      when 180 then  1 - face['bottomRightX'] - width.to_f
+      when 90 then   face['bottomRightX'] - width
+      when 180 then  1 - face['bottomRightX'] - width
       when 270 then  1 - face['topLeftY']                              # Corrected
     end)
 
-    toplefty = '%.6f' % (raw_factor_y * case frot
+    toplefty = (raw_factor_y * case frot
       when 0 then   face['topLeftY']
-      when 90  then 1 - face['bottomRightX']
-      when 180 then 1 - face['bottomRightY'] - height.to_f
+      when 90  then 1 - face['bottomRightY'] - height
+      when 180 then 1 - face['bottomRightY'] - height
       when 270 then 1 - face['topLeftX']                               # Corrected
     end)
 
-    centerx  = '%.6f' % (topleftx.to_f * raw_factor_x + width.to_f/2)
-    centery  = '%.6f' % (toplefty.to_f * raw_factor_y + height.to_f/2)
+    centerx  = (topleftx * raw_factor_x + width/2)
+    centery  = (toplefty * raw_factor_y + height/2)
     mode = raw_factor_x==1 ? face['mode'] : 'FaceRaw '
     {'mode' => mode,
      'topleftx' => topleftx, 'toplefty' => toplefty,
@@ -215,12 +217,19 @@ def calc_faces(faces, frot=0, raw_factor_x=1, raw_factor_y=1)
   end
   res.each {|f|
     str = f['mode'] || "Face#{frot}°"
-    debug 3, "  ... #{str}: tl: #{f['topleftx']} #{f['toplefty']}, wh: #{f['width']} #{f['height']};\t#{f['name']}".grey, true
+    debug 3, sprintf("  ... %s: tl: %.6f %.6f, wh: %.6f %.6f;\t%s",
+      str, f['topleftx'], f['toplefty'], f['width'], f['height'], f['name']).grey, true
+    #debug 3, "  ... #{str}: tl: #{f['topleftx']} #{f['toplefty']}, wh: #{f['width']} #{f['height']};\t#{f['name']}".grey, true
   }
   res
 end
 
 
+# Face debugging notes:
+## Unflipped images seem to be ok.
+##   0° flipped:  use FaceEdit face rectangles, e.g. 20070120155408, 20070120155646,
+##  90° flipped:  flip on
+## 180° flipped:  flip on left edge and in vertical center, e.g. 20150829_084621, 20150829_084522, 20150829_084520, most smartphone images
 
 
 ###################################################################################################
@@ -361,6 +370,13 @@ albumdata.each do |d|
     end
   end
 end
+
+
+orienthead, *orientdata = propertydb.execute2("
+  SELECT O.versionId v_id, S.stringProperty str FROM RKOtherProperty O
+  LEFT JOIN RKUniqueString S ON S.modelId=O.stringId WHERE O.propertyKey='Orientation'")
+#orientlist = orientdata.inject({}) { |h,orient| h[orient['v_id'].to_s] = orient['str'] }
+#debug 3, "Orientations: " + orientdata.inspect.grey, true
 
 curr_roll = nil
 
@@ -640,6 +656,8 @@ masters.each do |photo|
          ,abs(d.topLeftY - d.bottomRightY) AS height
          ,d.width           AS image_width          -- TODO: check whether face was meant to be rotated?
          ,d.height          AS image_height
+         ,d.faceDirectionAngle  AS face_dir_angle
+         ,d.faceAngle           AS face__angle
          ,d.confidence
          ,d.rejected
          ,d.ignore
@@ -652,6 +670,14 @@ masters.each do |photo|
       WHERE d.masterUuid='#{photo['master_uuid']}'
       ORDER BY d.modelId")  # LEFT JOIN because we also want unknown faces
 
+  ## face debugging photos:
+  ## 20070120155408,20070120155646,20070120155919,20070120160320,1980-08_07,0802_IMG,DSCF4947,dscf1828,dscf1833,DSCF2239,DSCF2240,DSCF4948,DSCF4948,20150103_093106,20150110_220459,20150609_120655,20150111,181534,20150829_084621,P1010287,IMG_1707
+  ## Criteria:
+  ## - multiple faces
+  ## - edited
+  ## - flipped 90°, 180°, 270°
+  ## - cropped   - e.g. 20150609_120655
+  ## -
 
   # Get face rectangles from modified images (cropped, rotated, etc). No need to calculate those manually.
   # This might be empty, in that case use list of unmodified faces.
@@ -691,8 +717,8 @@ masters.each do |photo|
   face_csv_list << facekeys.collect do |fn|
     oface = faces.find {|f| f['face_key'] == fn }#  ; puts oface.inspect
     mface = modfaces_.find {|f| f['face_key'] == fn }#  ; puts mface.inspect
-    sprintf("%s,%s,%s,%s,%s,%s,%s,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f",
-      photo['id'].to_s, photo['caption'], photo['rotation'].to_s, photo['face_rotation'].to_s, '', mface['name'], fn,
+    sprintf("%s,%s,%s,%s,%s,%s,%s,%s,%s,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f",
+      photo['id'].to_s, photo['caption'], photo['rotation'].to_s, photo['face_rotation'].to_s, oface['face_angle'].to_s, oface['face_dir_angle'].to_s, '', mface['name'], fn,
         oface['topLeftX'], oface['topLeftY'], oface['width'], oface['height'],
         mface['topLeftX'], mface['topLeftY'], mface['width'], mface['height']
        )
@@ -744,7 +770,7 @@ end
 eventmetafile.close
 
 unless face_csv_list.empty?
-  debug 3, "vers_id,caption,rotation,face_rotation,visible_rot,face_name,face_key,face_tlx,face_tly,face_w,face_h,modface_tlx,modface_tly,modface_w,modface_h", true
+  debug 3, "vers_id,caption,rotation,face_rotation,face_angle,face_dir_angle,visible_rot,face_name,face_key,face_tlx,face_tly,face_w,face_h,modface_tlx,modface_tly,modface_w,modface_h", true
   debug 3, face_csv_list.flatten.join("\n")
 end
 
