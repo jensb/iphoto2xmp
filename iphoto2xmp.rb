@@ -183,28 +183,28 @@ def calc_faces(faces, frot=0, raw_factor_x=1, raw_factor_y=1)
       when 0 then   (face['bottomRightX'] - face['topLeftX']).abs
       when 90 then  (face['bottomRightX'] - face['topLeftX']).abs
       when 180 then (face['bottomRightX'] - face['topLeftX']).abs
-      when 270 then (face['bottomRightY'] - face['topLeftY']).abs      # Verified OK
+      when 270 then (face['bottomRightX'] - face['topLeftX']).abs      # Verified OK
     end)
 
     height   = (raw_factor_y * case frot
       when 0 then   (face['bottomRightY'] - face['topLeftY']).abs
       when 90 then  (face['bottomRightY'] - face['topLeftY']).abs
       when 180 then (face['bottomRightY'] - face['topLeftY']).abs
-      when 270 then (face['bottomRightX'] - face['topLeftX']).abs      # Verified OK
+      when 270 then (face['bottomRightY'] - face['topLeftY']).abs      # Verified OK
     end)
 
     topleftx = (raw_factor_x * case frot
       when 0 then    face['topLeftX']
       when 90 then   face['bottomRightX'] - width
       when 180 then  1 - face['bottomRightX'] - width
-      when 270 then  1 - face['topLeftY']                              # Corrected
+      when 270 then  1 - face['topLeftX']                              # Corrected
     end)
 
     toplefty = (raw_factor_y * case frot
       when 0 then   face['topLeftY']
       when 90  then 1 - face['bottomRightY'] - height
       when 180 then 1 - face['bottomRightY'] - height
-      when 270 then 1 - face['topLeftX']                               # Corrected
+      when 270 then 1 - face['topLeftY']                               # Corrected
     end)
 
     centerx  = (topleftx * raw_factor_x + width/2)
@@ -652,12 +652,12 @@ masters.each do |photo|
           -- Y values are counted from the bottom in iPhoto, but X values are counted from the left like usual!
          ,d.topLeftX    ,1-d.topLeftY    AS topLeftY   ,d.topRightX    ,1-d.topRightY    AS topRightY
          ,d.bottomLeftX ,1-d.bottomLeftY AS bottomLeftY,d.bottomRightX ,1-d.bottomRightY AS bottomRightY
-         ,abs(d.topLeftX - d.topRightX) AS width
-         ,abs(d.topLeftY - d.bottomleftY) AS height
+         ,abs(d.topLeftX - d.bottomRightX) AS width
+         ,abs(d.topLeftY - d.bottomRightY) AS height
          ,d.width           AS image_width          -- TODO: check whether face was meant to be rotated?
          ,d.height          AS image_height
          ,d.faceDirectionAngle  AS face_dir_angle
-         ,d.faceAngle           AS face__angle
+         ,d.faceAngle           AS face_angle      -- always 0?
          ,d.confidence
          ,d.rejected
          ,d.ignore
@@ -732,6 +732,7 @@ masters.each do |photo|
   width = photo['master_width'].to_i
   height = photo['master_height'].to_i
   @orig_faces = calc_faces(faces,  photo['rotation'].to_i)
+#  @orig_faces = calc_faces(faces)
   @rw2_faces  = calc_faces(faces, photo['rotation'].to_i, photo['raw_factor_w'] || 1, photo['raw_factor_h'] || 1)
   @crop_faces = calc_faces_edit(modfaces_)
 
