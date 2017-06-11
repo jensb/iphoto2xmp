@@ -179,42 +179,41 @@ end
 # Calculate face position depending on rotation status and file type (special treatment for RW2).
 def calc_faces(faces, frot=0, raw_factor_x=1, raw_factor_y=1)
   res = faces.collect do |face|
-    width    = (raw_factor_x * case frot
-      when 0 then   (face['bottomRightX'] - face['topLeftX']).abs
-      when 90 then  (face['bottomRightX'] - face['topLeftX']).abs
-      when 180 then (face['bottomRightX'] - face['topLeftX']).abs
-      when 270 then (face['bottomRightX'] - face['topLeftX']).abs      # Verified OK
-    end)
+    width    = raw_factor_x * (face['bottomRightX'] - face['topLeftX']).abs
+    height   = raw_factor_y * (face['bottomRightY'] - face['topLeftY']).abs
+    #if frot==90 or frot==270 ; x = height ; height = width; width = x ; end     # swap width and height
 
-    height   = (raw_factor_y * case frot
-      when 0 then   (face['bottomRightY'] - face['topLeftY']).abs
-      when 90 then  (face['bottomRightY'] - face['topLeftY']).abs
-      when 180 then (face['bottomRightY'] - face['topLeftY']).abs
-      when 270 then (face['bottomRightY'] - face['topLeftY']).abs      # Verified OK
-    end)
+    case frot
+      when   0 then topleftx = face['topLeftX']                 ; toplefty = face['topLeftY']
+      when  90 then topleftx = 1 - width  - face['topLeftY']    ; toplefty = face['topLeftX']
+      when 180 then topleftx = 1 - width  - face['bottomRightX']; toplefty = 1 - height - face['bottomRightY']
+      when 270 then topleftx = face['topLeftY']                 ; toplefty = 1 - height - face['topLeftX']
+    end
 
-    topleftx = (raw_factor_x * case frot
-      when 0 then    face['topLeftX']
-      when 90 then   face['bottomRightX'] - width
-      when 180 then  1 - face['bottomRightX'] - width
-      when 270 then  1 - face['topLeftX']                              # Corrected
-    end)
-
-    toplefty = (raw_factor_y * case frot
-      when 0 then   face['topLeftY']
-      when 90  then 1 - face['bottomRightY'] - height
-      when 180 then 1 - face['bottomRightY'] - height
-      when 270 then 1 - face['topLeftY']                               # Corrected
-    end)
+    #topleftx = (raw_factor_x * case frot
+    #  when 0 then    face['topLeftX']
+    #  when 90 then   face['bottomRightX'] - width
+    #  when 180 then  1 - face['bottomRightX'] - width
+    #  when 270 then  1 - face['topLeftX']                              # Corrected
+    #end)
+    #toplefty = (raw_factor_y * case frot
+    #  when 0 then   face['topLeftY']
+    #  when 90  then 1 - face['bottomRightY'] - height
+    #  when 180 then 1 - face['bottomRightY'] - height
+    #  when 270 then 1 - face['topLeftY']                               # Corrected
+    #end)
 
     centerx  = (topleftx * raw_factor_x + width/2)
     centery  = (toplefty * raw_factor_y + height/2)
     mode = raw_factor_x==1 ? face['mode'] : 'FaceRaw '
-    {'mode' => mode,
-     'topleftx' => topleftx, 'toplefty' => toplefty,
+    [
+    {'mode' => mode, 'topleftx' => topleftx, 'toplefty' => toplefty,
      'centerx'  => centerx, 'centery' => centery, 'width' => width, 'height' => height,
-     'name' => "#{face['name']} [#{mode||frot}]" || 'Unknown', 'email' => face['email'] }
+     'name' => "#{face['name']} [#{mode||frot}]" || 'Unknown', 'email' => face['email'] },
+    ]
   end
+  res
+  res = res.flatten
   res.each {|f|
     str = f['mode'] || "Face#{frot}°"
     debug 3, sprintf("  ... %s: tl: %.6f %.6f, wh: %.6f %.6f;\t%s",
