@@ -183,6 +183,10 @@ def calc_faces(faces, frot=0, raw_factor_x=1, raw_factor_y=1)
     height   = raw_factor_y * (face['bottomRightY'] - face['topLeftY']).abs
     #if frot==90 or frot==270 ; x = height ; height = width; width = x ; end     # swap width and height
 
+    #   0°: validated correct for all images
+    # 180°: validated correct for all images
+    #  90°: errors e.g. in 0802_img with orig_faces
+    # 270°: errors e.g. in 20150111_181534, 20150111_181614
     case frot
       when   0 then topleftx = face['topLeftX']                 ; toplefty = face['topLeftY']
       when  90 then topleftx = 1 - width  - face['topLeftY']    ; toplefty = face['topLeftX']
@@ -730,6 +734,7 @@ masters.each do |photo|
   debug 3, "  ... After processing:", true
   width = photo['master_width'].to_i
   height = photo['master_height'].to_i
+  #@orig_faces = calc_faces(faces,  photo['rotation'].to_i)
   @orig_faces = calc_faces(faces,  photo['rotation'].to_i)
 #  @orig_faces = calc_faces(faces)
   @rw2_faces  = calc_faces(faces, photo['rotation'].to_i, photo['raw_factor_w'] || 1, photo['raw_factor_h'] || 1)
@@ -742,6 +747,7 @@ masters.each do |photo|
       @facecomment = "Using [raw] hacked RAW face rectangles"
     else
       @faces = @orig_faces
+      #@facecomment = "Using [edit] RKVersionFaceRectangles"
       @facecomment = "Using [orig] RKDetectedFace, RKFaceName"
     end
     j = File.open(origxmppath, 'w')
