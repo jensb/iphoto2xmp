@@ -181,31 +181,19 @@ def calc_faces(faces, frot=0, raw_factor_x=1, raw_factor_y=1)
   res = faces.collect do |face|
     width    = raw_factor_x * (face['bottomRightX'] - face['topLeftX']).abs
     height   = raw_factor_y * (face['bottomRightY'] - face['topLeftY']).abs
-    #if frot==90 or frot==270 ; x = height ; height = width; width = x ; end     # swap width and height
+    #if frot==90 or frot==270 ; x = height ; height = width; width = x ; end     # swap width and height - incorrect!
 
     #   0°: validated correct for all images
-    # 180°: validated correct for all images
     #  90°: errors e.g. in 0802_img with orig_faces
+    # 180°: validated correct for all images
     # 270°: errors e.g. in 20150111_181534, 20150111_181614
+    # Swapping 90/270° rotation factors does not improve matters with faces or modfaces values
     case frot
       when   0 then topleftx = face['topLeftX']                 ; toplefty = face['topLeftY']
       when  90 then topleftx = 1 - width  - face['topLeftY']    ; toplefty = face['topLeftX']
       when 180 then topleftx = 1 - width  - face['bottomRightX']; toplefty = 1 - height - face['bottomRightY']
       when 270 then topleftx = face['topLeftY']                 ; toplefty = 1 - height - face['topLeftX']
     end
-
-    #topleftx = (raw_factor_x * case frot
-    #  when 0 then    face['topLeftX']
-    #  when 90 then   face['bottomRightX'] - width
-    #  when 180 then  1 - face['bottomRightX'] - width
-    #  when 270 then  1 - face['topLeftX']                              # Corrected
-    #end)
-    #toplefty = (raw_factor_y * case frot
-    #  when 0 then   face['topLeftY']
-    #  when 90  then 1 - face['bottomRightY'] - height
-    #  when 180 then 1 - face['bottomRightY'] - height
-    #  when 270 then 1 - face['topLeftY']                               # Corrected
-    #end)
 
     centerx  = (topleftx * raw_factor_x + width/2)
     centery  = (toplefty * raw_factor_y + height/2)
@@ -222,7 +210,6 @@ def calc_faces(faces, frot=0, raw_factor_x=1, raw_factor_y=1)
     str = f['mode'] || "Face#{frot}°"
     debug 3, sprintf("  ... %s: tl: %.6f %.6f, wh: %.6f %.6f;\t%s",
       str, f['topleftx'], f['toplefty'], f['width'], f['height'], f['name']).grey, true
-    #debug 3, "  ... #{str}: tl: #{f['topleftx']} #{f['toplefty']}, wh: #{f['width']} #{f['height']};\t#{f['name']}".grey, true
   }
   res
 end
@@ -678,15 +665,6 @@ masters.each do |photo|
       WHERE d.masterUuid='#{photo['master_uuid']}'
       ORDER BY d.modelId")  # LEFT JOIN because we also want unknown faces
 
-  ## face debugging photos:
-  ## 20070120155408,20070120155646,20070120155919,20070120160320,1980-08_07,0802_IMG,DSCF4947,dscf1828,dscf1833,DSCF2239,DSCF2240,DSCF4948,DSCF4948,20150103_093106,20150110_220459,20150609_120655,20150111,181534,20150829_084621,P1010287,IMG_1707
-  ## Criteria:
-  ## - multiple faces
-  ## - edited
-  ## - flipped 90°, 180°, 270°
-  ## - cropped   - e.g. 20150609_120655
-  ## -
-
   # Get face rectangles from modified images (cropped, rotated, etc). No need to calculate those manually.
   # This might be empty, in that case use list of unmodified faces.
   modfacehead, *modfaces = librarydb.execute2(
@@ -732,10 +710,10 @@ masters.each do |photo|
        )
   end
 
-  # calc_faces(faces, rotation, raw_factor_x=1, raw_factor_y=1)
-  # Flipped images (90°, 180°, 270° by RKVersion.rotation) need to have their orig_faces flipped as well and do not need modfaces.
-  # ... for flipped images, modfaces might contain incorrect face data!
-  # StraightenCrop and/or Crop needs modfaces.
+  # Face rectangle calculation.
+  # For modified images (librarydb) they seem to be correct always.
+  # For *non-rotated*, *non-EXIF-flipped* original images too.
+  # For original images the result seems to depend on EXIF rotation, photo[rotation], and sometimes facedb simply contains weird data.
   debug 3, "  ... After processing:", true
   width = photo['master_width'].to_i
   height = photo['master_height'].to_i
