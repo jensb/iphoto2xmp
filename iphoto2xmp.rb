@@ -66,11 +66,13 @@ end
 def link_photo(basedir, outdir, photo, imgfile, origfile)
   imgpath  = "#{basedir}/#{imgfile}"  # source image path, absolute
   if photo['rollname']
-    if year = parse_date(photo['roll_min_image_date'], photo['roll_min_image_tz'])
-      destpath = "#{outdir}/#{year.strftime("%Y")}/#{photo['rollname']}/#{File.basename(imgpath)}"
-    else
-      "#{outdir}/#{photo['rollname']}/#{File.basename(imgpath)}"
-    end
+    # FIXME: just for faces debugging
+    destpath = "#{outdir}/#{photo['rotation']}/#{File.basename(imgpath)}"
+    #if year = parse_date(photo['roll_min_image_date'], photo['roll_min_image_tz'])
+    #  destpath = "#{outdir}/#{year.strftime("%Y")}/#{photo['rollname']}/#{File.basename(imgpath)}"
+    #else
+    #  "#{outdir}/#{photo['rollname']}/#{File.basename(imgpath)}"
+    #end
   else
     "#{outdir}/00_ImagesWithoutEvents/#{imgfile}"
   end
