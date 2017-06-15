@@ -421,18 +421,22 @@ masters.each do |photo|
   end
 
   origpath = "Masters/#{photo['imagepath']}"
-
   # $known doesn't work here, various info in RKVersion is different (eg. caption)
   next if $known["#{basedir}/#{origpath}"]
+
   # Preview can be mp4, mov, jpg, whatever - but not RAW/RW2, it seems.
   # Preview has jpg or JPG extension. Try both.
   # Preview can be in one of two directory structures (depending on iPhoto version). Try both.
-  modpath1 = "Previews/#{photo['imagepath']}"
-  modpath2 = "Previews/#{File.dirname(photo['imagepath'])}/#{photo['uuid']}/#{File.basename(photo['imagepath']).gsub(/PNG$|JPG$|RW2$/, 'jpg')}"
-  modpath = File.exist?("#{basedir}/#{modpath1}") ? modpath1 : modpath2
-  if photo['mediatype'] != 'VIDT' and !File.exist?("#{basedir}/#{modpath}")
-    modpath = modpath.sub(/jpg$/, 'JPG')
+  modpath1 = "Previews/#{photo['imagepath'].gsub(/PNG$|JPG$|RW2$/, 'JPG')}"
+  if photo['mediatype'] != 'VIDT' and !File.exist?("#{basedir}/#{modpath1}")
+    modpath1.gsub!(/jpg$/, 'JPG')
   end
+  modpath2 = "Previews/#{File.dirname(photo['imagepath'])}/#{photo['uuid']}/#{File.basename(photo['imagepath']).gsub(/PNG$|JPG$|RW2$/, 'jpg')}"
+  if photo['mediatype'] != 'VIDT' and !File.exist?("#{basedir}/#{modpath2}")
+    modpath2 = modpath2.sub(/jpg$/, 'JPG')
+  end
+  modpath = File.exist?("#{basedir}/#{modpath1}") ? modpath1 : modpath2
+
   origxmppath, origdestpath = link_photo(basedir, outdir, photo, origpath, nil)
   next if done_xmp[origxmppath]    # do not overwrite master XMP twice
   # link_photo needs origpath to do size comparison for modified images
@@ -502,15 +506,16 @@ masters.each do |photo|
     debug 2, "  Flip: photo #{photo['rotation']}°, face(s): #{photo['face_rotation']}°".blue, true
   end
   # Test for modified images.
-  #debug 2, "  Mod1: #{modpath1}, Dir:", false
+  #debug 2, "  Mod1: #{modpath1}, Dir ", false
   #debug 2, Dir.exist?(File.dirname("#{basedir}/#{modpath1}")) ? 'OK'.green : 'missing'.red, false
   #debug 2, File.exist?("#{basedir}/#{modpath1}") ? ', file OK'.green : ', file missing'.red, true
-  #debug 2, "  Mod2: #{modpath2} ", false
+  #debug 2, "  Mod2: #{modpath2}, Dir ", false
   #debug 2, Dir.exist?(File.dirname("#{basedir}/#{modpath2}")) ? 'OK'.green : 'missing'.red, false
   #debug 2, File.exist?("#{basedir}/#{modpath2}") ? ', file OK'.green : ', file missing'.red, true
+  modexists = File.exist?("#{basedir}/#{modpath}")
   if modxmppath    # modified version *should* exist
     debug 2, "  Mod : #{photo['processed_height']}x#{photo['processed_width']}, #{modpath} ", false
-    debug 2, File.exist?("#{basedir}/#{modpath}") ? '(found)'.green : '(missing)'.red, true
+    debug 2, modexists ? '(found)'.green : '(missing)'.red, true
     debug 2, "     => #{moddestpath}".cyan, true  if File.exist?("#{basedir}/#{modpath}")
   end
 
