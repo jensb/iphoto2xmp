@@ -21,6 +21,7 @@ require 'find'              # required to find orphaned images
 require 'fileutils'         # required to move and link files around
 require 'sqlite3'           # required to access iPhoto database
 require 'time'              # required to convert integer timestamps
+require 'exifr'             # required to read orientation metadata from image files
 require 'cfpropertylist'    # required to read binary plist blobs in SQLite3 dbs, 'plist' gem can't do this
 require 'erb'               # template engine
 require 'pp'                # to pretty print PList extractions
@@ -100,6 +101,19 @@ def link_photo(basedir, outdir, photo, imgfile, origfile)
   # Without extension: File.dirname(destpath) + '/' + File.basename(destpath, File.extname(destpath)) + ".xmp"
   # With extension:
   ["#{destpath}.xmp", destpath.sub(/^#{outdir}\//, '')]
+end
+
+
+# Convert EXIFR values into degrees for rotation.
+def convert_exif_rot(val)
+  return 0 if !val or val==''
+  case val
+    when 1 then 0
+    when 8 then 270
+    when 3 then 180
+    when 6 then 90
+    else 0
+  end
 end
 
 
@@ -183,27 +197,29 @@ def calc_faces(faces, frot=0, raw_factor_x=1, raw_factor_y=1)
   res = faces.collect do |face|
     width    = raw_factor_x * (face['bottomRightX'] - face['topLeftX']).abs
     height   = raw_factor_y * (face['bottomRightY'] - face['topLeftY']).abs
-    #if frot==90 or frot==270 ; x = height ; height = width; width = x ; end     # swap width and height - incorrect!
+    if frot==90 or frot==270 ; x = height ; height = width; width = x ; end
 
     #   0°: validated correct for all images
     #  90°: errors e.g. in 0802_img with orig_faces
-    # 180°: validated correct for all images
+    # 180°: validated correct for all images except IMG_1707
     # 270°: errors e.g. in 20150111_181534, 20150111_181614
     # Swapping 90/270° rotation factors does not improve matters with faces or modfaces values
     case frot
       when   0 then topleftx = face['topLeftX']                 ; toplefty = face['topLeftY']
-      when  90 then topleftx = 1 - width  - face['topLeftY']    ; toplefty = face['topLeftX']
-      when 180 then topleftx = 1 - width  - face['bottomRightX']; toplefty = 1 - height - face['bottomRightY']
-      when 270 then topleftx = face['topLeftY']                 ; toplefty = 1 - height - face['topLeftX']
+      when  90 then topleftx = 1 - face['topLeftY']             ; toplefty = face['topLeftX']
+      when 180 then topleftx = 1 - face['topLeftX']             ; toplefty = 1 - face['topLeftY']
+      when 270 then topleftx = face['topLeftY']                 ; toplefty = 1 - face['topLeftX']
     end
-
     centerx  = (topleftx * raw_factor_x + width/2)
     centery  = (toplefty * raw_factor_y + height/2)
     mode = raw_factor_x==1 ? face['mode'] : 'FaceRaw '
     [
-    {'mode' => mode, 'topleftx' => topleftx, 'toplefty' => toplefty,
-     'centerx'  => centerx, 'centery' => centery, 'width' => width, 'height' => height,
-     'name' => "#{face['name']} [#{mode||frot}]" || 'Unknown', 'email' => face['email'] },
+      {'mode' => mode, 'topleftx' => topleftx, 'toplefty' => toplefty,
+       'centerx'  => centerx, 'centery' => centery, 'width' => width, 'height' => height,
+       'name' => "#{face['name']} [#{mode||frot}]" || 'Unknown', 'email' => face['email'] },
+     # {'mode' => "#{mode}2", 'topleftx' => topleftx, 'toplefty' => toplefty,
+     #  'centerx'  => centerx, 'centery' => centery, 'width' => width, 'height' => height,
+     #  'name' => "#{face['name']} [#{mode||frot}]" || 'Unknown', 'email' => face['email'] },
     ]
   end
   res
@@ -393,6 +409,8 @@ face_csv_list = []
 # iPhoto almost always stores a second version (Preview) of every image. In my case, out of 41000 images
 # only four had just a single version and one had six versions (print projects). So we can safely assume
 # one 'original' and one 'modified' version exist of each image and just loop through the master images.
+# TODO: save modified version only when original was "really" modified (EXIF rotate is not a real modification).
+#       Otherwise save original image only since it is (often) smaller in file size.
 masters.each do |photo|
   bar.increment unless ENV['DEBUG']
 
@@ -491,9 +509,6 @@ masters.each do |photo|
   debug 2, "  Desc: #{photodescs[photo['id'].to_i]}".green, true  if photodescs[photo['id'].to_i]
   debug 2, "  Orig: #{photo['master_height']}x#{photo['master_width']} (#{'%.4f' % photo['raw_factor_h']}/#{'%.4f' % photo['raw_factor_w']}), #{origpath} (#{File.exist?("#{basedir}/#{origpath}") ? 'found'.green : 'missing'.red})", true
   debug 3, "     => #{origdestpath}".cyan, true
-  if photo['face_rotation'].to_i != 0 or photo['rotation'] != 0
-    debug 2, "  Flip: photo #{photo['rotation']}°, face(s): #{photo['face_rotation']}°".blue, true
-  end
   # Test for modified images.
   #debug 2, "  Mod1: #{modpath1}, Dir ", false
   #debug 2, Dir.exist?(File.dirname("#{basedir}/#{modpath1}")) ? 'OK'.green : 'missing'.red, false
@@ -507,6 +522,20 @@ masters.each do |photo|
     debug 2, modexists ? '(found)'.green : '(missing)'.red, true
     debug 2, "     => #{moddestpath}".cyan, true  if File.exist?("#{basedir}/#{modpath}")
   end
+
+  exif_rot_orig = ''
+  if File.exist?("#{basedir}/#{origpath}") and origpath =~ /jpg$/i \
+      and exif_rot_orig = EXIFR::JPEG.new("#{basedir}/#{origpath}").orientation || ''
+    exif_rot_orig = convert_exif_rot(exif_rot_orig.to_i)
+  end
+  exif_rot_mod = ''
+  if modexists and modpath =~ /jpg$/i \
+      and exif_rot_mod  = EXIFR::JPEG.new("#{basedir}/#{modpath}").orientation || ''
+    exif_rot_mod  = convert_exif_rot(exif_rot_mod.to_i)
+  end
+  #if photo['face_rotation'].to_i != 0 or photo['rotation'] != 0
+    debug 2, "  Flip: EXIF #{exif_rot_orig}°/#{exif_rot_mod}°, photo #{photo['rotation']}°, face(s): #{photo['face_rotation']}°".blue, true
+  #end
 
   #
   # Build up objects with the metadata in using an ERB template. 
@@ -591,13 +620,14 @@ masters.each do |photo|
   # TODO: Use History.apdb::RKImageAdjustmentChange table to fill edit operations.
  
 
-  # If photo was edited, check if dimensions were changed (crop, rotate, iOS edit)
-  # since this would require recalculation of the face rectangle locations.
+  # If photo was edited, check if dimensions were changed (crop, rotate, iOS edit).
+  # Modified face rectangles are saved in LibraryDB::RKVersionFaceContent, no recalculation required.
   # Unfortunately, the crop info is saved in a PropertyList blob within the 'data' column of the DB.
   # Can it be more cryptic please? Who designs this crap anyway?
+  editlist = edits.collect{|e| e['adj_name'] }.join(",").gsub(/RK|Operation/, '')
   crop_startx = crop_starty = crop_width = crop_height = crop_rotation_factor = 0
   if photo['version_number'].to_i > 0
-    debug 3, "  Edit:  #{edits.collect{|e| e['adj_name'] }.join(",").gsub(/RK|Operation/, '')}", true
+    debug 3, "  Edit:  #{editlist}", true
     edits.each do |edit|
       check = false
       edit_plist_hash = CFPropertyList.native_types(CFPropertyList::List.new(data: edit['data']).value)
@@ -635,8 +665,8 @@ masters.each do |photo|
 
 
   #
-  # Add faces to BOTH original and edited images.
-  # If edited image is cropped, modify face rectangle positions accordingly.
+  # Add face rectangles to BOTH original and edited images.
+  #
   xmp_mod = xmp.dup
 
   # Link: Faces.apdb::RKDetectedFace::masterUuid == Library.apdb::RKMaster::uuid
@@ -656,15 +686,15 @@ masters.each do |photo|
          ,d.faceDirectionAngle  AS face_dir_angle
          ,d.faceAngle           AS face_angle      -- always 0?
          ,d.confidence
-         ,d.rejected
-         ,d.ignore
+         ,d.rejected        AS rejected
+         ,d.ignore          AS ignore
          ,n.uuid AS name_uuid
          ,n.name AS name          -- more reliable, also seems to contain manually added names
          ,n.fullName AS full_name -- might be empty if person is not listed in user's address book
          ,n.email AS email
       FROM RKDetectedFace d
       LEFT JOIN RKFaceName n ON n.faceKey=d.faceKey
-      WHERE d.masterUuid='#{photo['master_uuid']}'
+      WHERE d.masterUuid='#{photo['master_uuid']}' AND d.ignore=0 AND d.rejected=0
       ORDER BY d.modelId")  # LEFT JOIN because we also want unknown faces
 
   # Get face rectangles from modified images (cropped, rotated, etc). No need to calculate those manually.
@@ -705,10 +735,14 @@ masters.each do |photo|
   face_csv_list << facekeys.collect do |fn|
     oface = faces.find {|f| f['face_key'] == fn }#  ; puts oface.inspect
     mface = modfaces_.find {|f| f['face_key'] == fn }#  ; puts mface.inspect
-    sprintf("%s,%s,%s,%s,%s,%s,%s,%s,%s,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f",
-      photo['id'].to_s, photo['caption'], photo['rotation'].to_s, photo['face_rotation'].to_s, oface['face_angle'].to_s, oface['face_dir_angle'].to_s, '', mface['name'], fn,
-        oface['topLeftX'], oface['topLeftY'], oface['width'], oface['height'],
-        mface['topLeftX'], mface['topLeftY'], mface['width'], mface['height']
+    sprintf("%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f",
+      photo['id'].to_s, photo['caption'],
+      exif_rot_orig, exif_rot_mod, photo['rotation'].to_s, photo['face_rotation'].to_s,
+      oface['face_angle'].to_s, oface['face_dir_angle'].to_s, '', mface['name'], fn,
+      oface['topLeftX'], oface['topLeftY'], oface['topRightX'], oface['topRightY'],
+      oface['bottomLeftX'], oface['bottomLeftY'], oface['bottomRightX'], oface['bottomRightY'],
+      oface['width'], oface['height'],
+      mface['topLeftX'], mface['topLeftY'], mface['width'], mface['height']
        )
   end
 
@@ -716,22 +750,28 @@ masters.each do |photo|
   # For modified images (librarydb) they seem to be correct always.
   # For *non-rotated*, *non-EXIF-flipped* original images too.
   # For original images the result seems to depend on EXIF rotation, photo[rotation], and sometimes facedb simply contains weird data.
+  # So:
   debug 3, "  ... After processing:", true
   width = photo['master_width'].to_i
   height = photo['master_height'].to_i
-  #@orig_faces = calc_faces(faces,  photo['rotation'].to_i)
-  @orig_faces = calc_faces(faces,  photo['rotation'].to_i)
-#  @orig_faces = calc_faces(faces)
-  @rw2_faces  = calc_faces(faces, photo['rotation'].to_i, photo['raw_factor_w'] || 1, photo['raw_factor_h'] || 1)
-  @crop_faces = calc_faces_edit(modfaces_)
+  @orig_faces = calc_faces(faces,  photo['rotation'].to_i - exif_rot_orig.to_i)
+  #@orig_faces = calc_faces(faces,  photo['rotation'].to_i)             # OK for 180°, wrong for some 90° and 270° images
+  #@orig_faces = calc_faces(faces)                                      # doesn't work for rotated images
+  #@orig_faces = calc_faces(modfaces_,  photo['rotation'].to_i)         # doesn't work for most images
+  @mod_faces = calc_faces_edit(modfaces_)
 
   # TODO: additionally specify modified image as second version of original file in XMP (DerivedFrom?)
   unless(File.exist?(origxmppath))         # don't overwrite existing XMP - right now, kind of pointless but anyway
     if photo['imagepath'] =~ /RW2$/
-      @faces = @rw2_faces
+      @faces = calc_faces(faces, photo['rotation'].to_i, photo['raw_factor_w'] || 1, photo['raw_factor_h'] || 1)
       @facecomment = "Using [raw] hacked RAW face rectangles"
     else
-      @faces = @orig_faces
+      if @mod_faces and editlist !~ /Crop/i
+        @faces = @mod_faces
+      else
+        @faces = @orig_faces
+      end
+      #@faces = (@orig_faces + @mod_faces).flatten
       #@facecomment = "Using [edit] RKVersionFaceRectangles"
       @facecomment = "Using [orig] RKDetectedFace, RKFaceName"
     end
@@ -741,11 +781,11 @@ masters.each do |photo|
     done_xmp[origxmppath] = true
   end
   if photo['version_number'].to_i == 1 and modxmppath and !File.exist?(modxmppath)
-    if @crop_faces.empty?
+    if @mod_faces.empty?
       @faces = @orig_faces
       @facecomment = "Using [orig] RKDetectedFace, RKFaceName"
     else
-      @faces = @crop_faces
+      @faces = @mod_faces
       @facecomment = "Using [edit] RKVersionFaceRectangles"
     end
     @uuid = photo['uuid']             # for this image, use modified image's uuid
@@ -761,7 +801,7 @@ end
 eventmetafile.close
 
 unless face_csv_list.empty?
-  debug 3, "vers_id,caption,rotation,face_rotation,face_angle,face_dir_angle,visible_rot,face_name,face_key,face_tlx,face_tly,face_w,face_h,modface_tlx,modface_tly,modface_w,modface_h", true
+  debug 3, "vers_id,caption,exif_rot_orig,exif_rot_mod,rotation,face_rotation,face_angle,face_dir_angle,visible_rot,face_name,face_key,face_tlx,face_tly,face_trx,face_try,face_blx,face_bly,face_brx,face_bry,face_w,face_h,modface_tlx,modface_tly,modface_w,modface_h", true
   debug 3, face_csv_list.flatten.join("\n")
 end
 
