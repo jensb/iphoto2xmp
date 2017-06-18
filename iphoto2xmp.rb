@@ -233,13 +233,6 @@ def calc_faces(faces, frot=0, raw_factor_x=1, raw_factor_y=1)
 end
 
 
-# Face debugging notes:
-## Unflipped images seem to be ok.
-##   0° flipped:  use FaceEdit face rectangles, e.g. 20070120155408, 20070120155646,
-##  90° flipped:  flip on
-## 180° flipped:  flip on left edge and in vertical center, e.g. 20150829_084621, 20150829_084522, 20150829_084520, most smartphone images
-
-
 ###################################################################################################
 # Stage 1: Get main image info.
 # Cannot use AlbumData.xml because a lot of info is not listed at all in AlbumData.xml but should be exported.
@@ -251,6 +244,7 @@ librarydb = SQLite3::Database.new("#{iphotodir}/Database/apdb/Library.apdb")
 librarydb.results_as_hash = true  # gibt [{"modelId"=>1, "uuid"=>"SwX6W9...", "name"=>".."
 #keyhead, *keywords = librarydb.execute2("SELECT modelId, uuid, name, shortcut FROM RKKeyword")
 #puts "... Available Keywords: #{keywords.collect {|k| k['name'] }.join(", ")}"
+#region SQL ...
 masterhead, *masters = librarydb.execute2(
  "SELECT v.modelId AS id
         ,v.masterId AS master_id
@@ -300,6 +294,7 @@ masterhead, *masters = librarydb.execute2(
     LEFT JOIN RKImportGroup i ON m.importGroupUuid = i.uuid
  ")
 debug 1, "#{masters.count}; ", false
+#endregion
 
 
 propertydb = SQLite3::Database.new("#{iphotodir}/Database/apdb/Properties.apdb")
@@ -670,6 +665,7 @@ masters.each do |photo|
   xmp_mod = xmp.dup
 
   # Link: Faces.apdb::RKDetectedFace::masterUuid == Library.apdb::RKMaster::uuid
+  #region Faces SQL ...
   facehead, *faces = facedb.execute2(
       "SELECT d.modelId               -- primary key
          ,d.uuid AS detect_uuid       -- primary key
@@ -713,6 +709,7 @@ masters.each do |photo|
      FROM RKVersionFaceContent d
      WHERE d.versionId = '#{photo['id']}'
      ORDER BY d.versionId")
+  #endregion
 
   facekeys = modfaces.collect {|v| v['face_key'] }
   modfaces_ = modfaces.collect { |v|
