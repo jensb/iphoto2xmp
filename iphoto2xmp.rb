@@ -204,11 +204,11 @@ def calc_faces(faces, frot=0, raw_factor_x=1, raw_factor_y=1)
     # 180°: validated correct for all images except IMG_1707
     # 270°: errors e.g. in 20150111_181534, 20150111_181614
     # Swapping 90/270° rotation factors does not improve matters with faces or modfaces values
-    case frot
-      when   0 then topleftx = face['topLeftX']                 ; toplefty = face['topLeftY']
+    case frot.to_i
       when  90 then topleftx = 1 - face['topLeftY']             ; toplefty = face['topLeftX']
       when 180 then topleftx = 1 - face['topLeftX']             ; toplefty = 1 - face['topLeftY']
       when 270 then topleftx = face['topLeftY']                 ; toplefty = 1 - face['topLeftX']
+      else          topleftx = face['topLeftX']                 ; toplefty = face['topLeftY']
     end
     centerx  = (topleftx * raw_factor_x + width/2)
     centery  = (toplefty * raw_factor_y + height/2)
