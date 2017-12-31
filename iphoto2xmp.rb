@@ -21,7 +21,7 @@ require 'find'              # required to find orphaned images
 require 'fileutils'         # required to move and link files around
 require 'sqlite3'           # required to access iPhoto database
 require 'time'              # required to convert integer timestamps
-require 'exifr'             # required to read orientation metadata from image files
+require 'exifr/jpeg'             # required to read orientation metadata from image files
 require 'cfpropertylist'    # required to read binary plist blobs in SQLite3 dbs, 'plist' gem can't do this
 require 'erb'               # template engine
 require 'pp'                # to pretty print PList extractions
@@ -69,13 +69,14 @@ def link_photo(basedir, outdir, photo, imgfile, origfile)
   if photo['rollname']
     # FIXME: just for faces debugging
     #destpath = "#{outdir}/#{photo['rotation']}/#{File.basename(imgpath)}"
-    if year = parse_date(photo['roll_min_image_date'], photo['roll_min_image_tz'])
+    year = parse_date(photo['roll_min_image_date'], photo['roll_min_image_tz'])
+    if year
       destpath = "#{outdir}/#{year.strftime("%Y")}/#{photo['rollname']}/#{File.basename(imgpath)}"
     else
-      "#{outdir}/#{photo['rollname']}/#{File.basename(imgpath)}"
+      destpath = "#{outdir}/#{photo['rollname']}/#{File.basename(imgpath)}"
     end
   else
-    "#{outdir}/00_ImagesWithoutEvents/#{imgfile}"
+    destpath = "#{outdir}/00_ImagesWithoutEvents/#{imgfile}"
   end
   #destpath = photo['rollname']  ?  "#{outdir}/#{photo['rollname']}/#{File.basename(imgpath)}"
   #                              :  "#{outdir}#{imgfile}"
@@ -121,7 +122,7 @@ end
 # Correct to be able to use parsed date values.
 # Returns "YYYY-MM-DDTHH:MM:SS+NNNN" RFC 3339 string for XMP file.
 def parse_date(intdate, tz_str="", strf=nil, deduct_tz=false)
-  return '' unless intdate
+  return nil unless intdate
   diff = Time.parse("2001-01-01 #{tz_str}")
   t = Time.at(intdate + diff.to_i).to_time
   # Apple saves DST times differently so Ruby is off by 1h during DST. Correct here.
@@ -261,14 +262,13 @@ masterhead, *masters = librarydb.execute2(
         ,m.uuid AS master_uuid        -- master (unedited) image. Required for face rectangle conversion.
         ,v.versionNumber AS version_number  -- 1 if edited image, 0 if original image
         ,v.mainRating AS rating       -- TODO: Rating is always applied to the master image, not the edited one
-        ,m.type AS mediatype          -- IMGT, VIDT
         ,m.imagePath AS imagepath     -- 2015/04/27/20150427-123456/FOO.RW2, yields Masters/$imagepath and
                                       -- Previews: either Previews/$imagepath/ or dirname($imagepath)/$uuid/basename($imagepath)
      -- ,v.createDate AS date_imported
         ,m.createDate AS date_imported
         ,v.imageDate AS date_taken
      -- ,m.imageDate AS datem
-        ,v.exportImageChangeDate AS date_modified
+        ,v.lastModifiedDate AS date_modified
      -- ,m.fileCreationDate AS date_filecreation -- is this the 'date imported'? No
      -- ,m.fileModificationDate AS date_filemod
      -- ,replace(i.name, ' @ ', 'T') AS date_importgroup -- contains datestamp of import procedure for a group of files,
@@ -289,51 +289,38 @@ masterhead, *masters = librarydb.execute2(
         ,v.faceDetectionRotationFromMaster AS face_rotation      -- don't know, maybe a hint for face detection algorithm
         ,v.rotation AS rotation                 -- was the original image rotated?
    FROM RKVersion v
-    LEFT JOIN RKFolder f ON v.projectUuid=f.uuid
+    LEFT JOIN RKAlbumVersion av ON v.modelId=av.versionId
+    LEFT JOIN RKAlbum a ON av.albumId=a.modelId
+    LEFT JOIN RKFolder f ON a.folderUuid=f.uuid 
     LEFT JOIN RKMaster m ON m.uuid = v.masterUuid
     LEFT JOIN RKImportGroup i ON m.importGroupUuid = i.uuid
  ")
 debug 1, "#{masters.count}; ", false
+
+masters.select! { |photo| !!photo['roll'] }
+debug 1, "#{masters.count}; ", false
+
 #endregion
 
-
-propertydb = SQLite3::Database.new("#{iphotodir}/Database/apdb/Properties.apdb")
-propertydb.results_as_hash = true
-placehead, *places = propertydb.execute2('SELECT
+placehead, *places = librarydb.execute2('SELECT
   p.modelId, p.uuid, p.defaultName, p.minLatitude, p.minLongitude, p.maxLatitude, p.maxLongitude, p.centroid, p.userDefined
   FROM RKPlace p');
-# placehead, *places = propertydb.execute2("SELECT p.modelId, p.uuid, p.defaultName, p.minLatitude, p.minLongitude, p.maxLatitude, p.maxLongitude, p.centroid, p.userDefined, n.language, n.description FROM RKPlace p INNER JOIN RKPlaceName n ON p.modelId=n.placeId");
 placelist = places.inject({}) {|h,place| h[place['modelId']] = place; h }
 debug 1, "Properties (#{places.count} places; ", false
 
 # Get description text of all photos.
-deschead, *descs = propertydb.execute2("SELECT
-  i.modelId AS id, i.versionId AS versionId, i.modDate AS modDate, s.stringProperty AS string
-FROM RKIptcProperty i LEFT JOIN RKUniqueString s ON i.stringId=s.modelId
-WHERE i.propertyKey = 'Caption/Abstract' ORDER BY versionId")
+deschead, *descs = librarydb.execute2("SELECT
+  v.modelId AS id, v.uuid AS versionId, v.createDate AS modDate, v.extendedDescription AS string
+FROM RKVersion v WHERE v.extendedDescription IS NOT NULL")
 photodescs = descs.inject({}) {|h,desc| h[desc['versionId']] = desc['string']; h }
 # FYI: this is the date of adding the description, not the last photo edit date
 photomoddates = descs.inject({}) {|h,desc| h[desc['versionId']] = desc['modDate']; h }
 debug 1, "Description #{descs.count}; ", false
 
-facedb = SQLite3::Database.new("#{iphotodir}/Database/apdb/Faces.db")
-facedb.results_as_hash = true
-
 # Get list of names to associate with modified face rectangle list (which does not contain this info).
-fnamehead, *fnames = facedb.execute2('SELECT modelId ,uuid ,faceKey ,name ,email FROM RKFaceName')
+fnamehead, *fnames = librarydb.execute2('SELECT modelId, uuid, name, displayName as email FROM RKPerson')
 fnamelist = fnames.inject({}) {|h,fname| h[fname['faceKey'].to_i] = fname; h }
 debug 1, "Faces #{fnamelist.size}; ", false
-
-# Get list of Event notes (pre-iPhoto 9.1) and save to text file. There is no XMP standard for this data.
-notehead, *notes = librarydb.execute2("SELECT RKNote.note AS note, RKFolder.name AS name
-  FROM RKNote LEFT JOIN RKFolder on RKNote.attachedToUuid = RKFolder.uuid
-  WHERE RKFolder.name IS NOT NULL AND RKFolder.name != '' ORDER BY RKFolder.modelId")
-File.open("#{outdir}/event_notes.sql", 'w') do |f|
-  notes.each do |note|
-    f.puts("UPDATE Albums SET caption='#{note['note'].sqlclean}' WHERE relativePath LIKE '%/#{note['name'].sqlclean}';")
-  end
-end unless notes.empty?
-debug 1, "Event Notes #{notes.size}).", true
 
 
 # Get Folders and Albums. Convert to (hierarchical) keywords since "Albums" are nothing but tag collections.
@@ -374,12 +361,6 @@ albumdata.each do |d|
   end
 end
 
-
-orienthead, *orientdata = propertydb.execute2("
-  SELECT O.versionId v_id, S.stringProperty str FROM RKOtherProperty O
-  LEFT JOIN RKUniqueString S ON S.modelId=O.stringId WHERE O.propertyKey='Orientation'")
-#orientlist = orientdata.inject({}) { |h,orient| h[orient['v_id'].to_s] = orient['str'] }
-#debug 3, "Orientations: " + orientdata.inspect.grey, true
 
 curr_roll = nil
 
@@ -430,11 +411,13 @@ masters.each do |photo|
   # Preview has jpg or JPG extension. Try both.
   # Preview can be in one of two directory structures (depending on iPhoto version). Try both.
   modpath1 = "Previews/#{photo['imagepath'].gsub(/PNG$|JPG$|RW2$/, 'JPG')}"
-  if photo['mediatype'] != 'VIDT' and !File.exist?("#{basedir}/#{modpath1}")
+  # if photo['mediatype'] != 'VIDT' and !File.exist?("#{basedir}/#{modpath1}")
+  if !File.exist?("#{basedir}/#{modpath1}")
     modpath1.gsub!(/jpg$/, 'JPG')
   end
   modpath2 = "Previews/#{File.dirname(photo['imagepath'])}/#{photo['uuid']}/#{File.basename(photo['imagepath']).gsub(/PNG$|JPG$|RW2$/, 'jpg')}"
-  if photo['mediatype'] != 'VIDT' and !File.exist?("#{basedir}/#{modpath2}")
+  # if photo['mediatype'] != 'VIDT' and !File.exist?("#{basedir}/#{modpath2}")
+  if !File.exist?("#{basedir}/#{modpath2}")
     modpath2 = modpath2.sub(/jpg$/, 'JPG')
   end
   modpath = File.exist?("#{basedir}/#{modpath1}") ? modpath1 : modpath2
@@ -444,7 +427,8 @@ masters.each do |photo|
   # link_photo needs origpath to do size comparison for modified images
   # only perform link_photo for "non-videos" and when a modified image should exist
   # since iPhoto creates "link mp4" files without real video content for "modified" videos (useless)
-  if photo['version_number'].to_i > 0 and photo['mediatype'] != 'VIDT'
+  # if photo['version_number'].to_i > 0 and photo['mediatype'] != 'VIDT'
+  if photo['version_number'].to_i > 0
     modxmppath, moddestpath = link_photo(basedir, outdir, photo, modpath, origpath)
   end
 
@@ -600,196 +584,6 @@ masters.each do |photo|
   albums = albumlist.collect{|k,v| v['path']}.uniq
   debug 2, "  AlbumTags: #{albums}".blue, true unless albums.empty?
   @keylist += albums
-
-  # Get edits. Discard pseudo-Edits like RAW decoding and (perhaps?) rotations
-  # but save the others in the XMP edit history.
-  edithead, *edits = librarydb.execute2(
-    "SELECT a.name AS adj_name    -- RKRawDecodeOperation, RKStraightenCropOperation, ...
-                                  -- RAW-Decoding and Rotation are not edit operations, strictly speaking
-           ,a.adjIndex as adj_index
-           ,a.data as data
-     FROM RKImageAdjustment a
-    WHERE a.versionUuid='#{photo['uuid']}'")
-
-  # TODO: Save iPhoto/iOS edit operations in XMP structure (digiKam:history?)
-  # TODO: Use History.apdb::RKImageAdjustmentChange table to fill edit operations.
- 
-
-  # If photo was edited, check if dimensions were changed (crop, rotate, iOS edit).
-  # Modified face rectangles are saved in LibraryDB::RKVersionFaceContent, no recalculation required.
-  # Unfortunately, the crop info is saved in a PropertyList blob within the 'data' column of the DB.
-  # Can it be more cryptic please? Who designs this crap anyway?
-  editlist = edits.collect{|e| e['adj_name'] }.join(",").gsub(/RK|Operation/, '')
-  crop_startx = crop_starty = crop_width = crop_height = crop_rotation_factor = 0
-  if photo['version_number'].to_i > 0
-    debug 3, "  Edit:  #{editlist}", true
-    edits.each do |edit|
-      check = false
-      edit_plist_hash = CFPropertyList.native_types(CFPropertyList::List.new(data: edit['data']).value)
-      # save raw PropertyList data in additional sidecar file for later analysis
-      File.open(modxmppath.gsub(/xmp/, "plist_#{edit['adj_name']}"), 'w') do |j|
-        PP.pp(edit_plist_hash, j)
-      end
-
-      # NB: Not needed any more for face positioning since Library::RKVersionFaceContent was found.
-      case edit['adj_name'] 
-        when 'RKCropOperation'
-          check = edit_plist_hash['$objects'][13] == 'inputRotation'
-          # eg. 1612, 2109, 67, 1941 - crop positions
-          # actually, these are dynamic - the PList hash must be analyzed in depth to get positions.
-          crop_startx = edit_plist_hash['$objects'][20]    # xstart: position from the left
-          crop_starty = edit_plist_hash['$objects'][23]    # ystart: position from the bottom!
-          crop_width  = edit_plist_hash['$objects'][22]    # xsize:  size in pixels from xstart
-          crop_height = edit_plist_hash['$objects'][24]    # ysize:  size in pixels from ystart
-          debug 3, "Crop (#{crop_startx}x#{crop_starty}+#{crop_width}+#{crop_height}), ", false
-        when 'RKStraightenCropOperation'
-          check = edit_plist_hash['$objects'][9] == 'inputRotation'
-          # factor examples: 1.04125 ~ 1.0° ; -19.0507 ~ -19,1°
-          crop_rotation_factor = edit_plist_hash['$objects'][10]    # inputRotation in ° (degrees of 360°)
-          debug 3, "StraightenCrop (#{crop_rotation_factor}), ", false
-        when 'DGiOSEditsoperation'
-          # TODO: image was edited in iOS which creates its own XMP file (with proprietary aas and crs tags).
-          debug 3, 'iOSEdits (???), ', false
-        else
-          # No region adjustment required for RawDecode, Whitebalance, ShadowHighlight, Exposure, NoiseReduction,
-          # ProSharopen, iPhotoRedEye, Retouch, iPhotoEffects, and possibly others
-      end
-    end # edits.each
-    debug 3, '', true if edits.count > 0
-  end
-
-
-  #
-  # Add face rectangles to BOTH original and edited images.
-  #
-  xmp_mod = xmp.dup
-
-  # Link: Faces.apdb::RKDetectedFace::masterUuid == Library.apdb::RKMaster::uuid
-  #region Faces SQL ...
-  facehead, *faces = facedb.execute2(
-      "SELECT d.modelId               -- primary key
-         ,d.uuid AS detect_uuid       -- primary key
-         ,d.masterUuid                -- --> Library::RKMaster::uuid
-         ,d.faceKey AS face_key       -- --> RKFaceName::faceKey
-          -- *relative* coordinates within *original, non-rotated* image (0..1)
-          -- Y values are counted from the bottom in iPhoto, but X values are counted from the left like usual!
-         ,d.topLeftX    ,1-d.topLeftY    AS topLeftY   ,d.topRightX    ,1-d.topRightY    AS topRightY
-         ,d.bottomLeftX ,1-d.bottomLeftY AS bottomLeftY,d.bottomRightX ,1-d.bottomRightY AS bottomRightY
-         ,abs(d.topLeftX - d.bottomRightX) AS width
-         ,abs(d.topLeftY - d.bottomRightY) AS height
-         ,d.width           AS image_width          -- TODO: check whether face was meant to be rotated?
-         ,d.height          AS image_height
-         ,d.faceDirectionAngle  AS face_dir_angle
-         ,d.faceAngle           AS face_angle      -- always 0?
-         ,d.confidence
-         ,d.rejected        AS rejected
-         ,d.ignore          AS ignore
-         ,n.uuid AS name_uuid
-         ,n.name AS name          -- more reliable, also seems to contain manually added names
-         ,n.fullName AS full_name -- might be empty if person is not listed in user's address book
-         ,n.email AS email
-      FROM RKDetectedFace d
-      LEFT JOIN RKFaceName n ON n.faceKey=d.faceKey
-      WHERE d.masterUuid='#{photo['master_uuid']}' AND d.ignore=0 AND d.rejected=0
-      ORDER BY d.modelId")  # LEFT JOIN because we also want unknown faces
-
-  # Get face rectangles from modified images (cropped, rotated, etc). No need to calculate those manually.
-  # This might be empty, in that case use list of unmodified faces.
-  modfacehead, *modfaces = librarydb.execute2(
-    "SELECT d.modelId        AS id
-           ,d.versionId      AS version_id
-           ,d.masterId       AS master_id
-           ,d.faceKey        AS face_key
-           ,d.faceRectLeft   AS topLeftX      -- use same naming scheme as in 'faces'
-         ,1-d.faceRectTop    AS bottomRightY  -- Y values are counted from the bottom in this table!
-           ,d.faceRectWidth  AS width
-           ,d.faceRectHeight AS height
-           ,d.faceRectWidth + d.faceRectLeft      AS bottomRightX
-         ,1-d.faceRectTop   - d.faceRectHeight    AS topLeftY
-     FROM RKVersionFaceContent d
-     WHERE d.versionId = '#{photo['id']}'
-     ORDER BY d.versionId")
-  #endregion
-
-  facekeys = modfaces.collect {|v| v['face_key'] }
-  modfaces_ = modfaces.collect { |v|
-     v.update({'mode' => 'FaceEdit',
-               'name' => (fnamelist[v['face_key'].to_i]['name'] rescue ''),
-               'email' => (fnamelist[v['face_key'].to_i]['email'] rescue '')})
-  }
-
-  debug 3, "  ... Original Face DB data:", true
-  faces.each do |face|
-    debug 3, sprintf("  ...     face: tl: %.6f %.6f, wh: %.6f %.6f,  %s  (%i)",
-      face['topLeftX'], face['topLeftY'], face['width'], face['height'], face['name'], face['face_key']).grey, true
-  end
-  modfaces_.each do |face|
-    debug 3, sprintf("  ...  modface: tl: %.6f %.6f, wh: %.6f %.6f,  %s  (%i)",
-      face['topLeftX'], face['topLeftY'], face['width'], face['height'], face['name'], face['face_key']).grey, true
-  end
-
-  # Debug to check for matches: For each face, output CSV. Format see after main loop.
-  face_csv_list << facekeys.collect do |fn|
-    oface = faces.find {|f| f['face_key'] == fn }#  ; puts oface.inspect
-    mface = modfaces_.find {|f| f['face_key'] == fn }#  ; puts mface.inspect
-    sprintf("%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f",
-      photo['id'].to_s, photo['caption'],
-      exif_rot_orig, exif_rot_mod, photo['rotation'].to_s, photo['face_rotation'].to_s,
-      oface['face_angle'].to_s, oface['face_dir_angle'].to_s, '', mface['name'], fn,
-      oface['topLeftX'], oface['topLeftY'], oface['topRightX'], oface['topRightY'],
-      oface['bottomLeftX'], oface['bottomLeftY'], oface['bottomRightX'], oface['bottomRightY'],
-      oface['width'], oface['height'],
-      mface['topLeftX'], mface['topLeftY'], mface['width'], mface['height']
-       )
-  end
-
-  # Face rectangle calculation.
-  # For modified images (librarydb) they seem to be correct always.
-  # For *non-rotated*, *non-EXIF-flipped* original images too.
-  # For original images the result seems to depend on EXIF rotation, photo[rotation], and sometimes facedb simply contains weird data.
-  # So:
-  debug 3, "  ... After processing:", true
-  width = photo['master_width'].to_i
-  height = photo['master_height'].to_i
-  @orig_faces = calc_faces(faces,  photo['rotation'].to_i - exif_rot_orig.to_i)
-  #@orig_faces = calc_faces(faces,  photo['rotation'].to_i)             # OK for 180°, wrong for some 90° and 270° images
-  #@orig_faces = calc_faces(faces)                                      # doesn't work for rotated images
-  #@orig_faces = calc_faces(modfaces_,  photo['rotation'].to_i)         # doesn't work for most images
-  @mod_faces = calc_faces_edit(modfaces_)
-
-  # TODO: additionally specify modified image as second version of original file in XMP (DerivedFrom?)
-  unless(File.exist?(origxmppath))         # don't overwrite existing XMP - right now, kind of pointless but anyway
-    if photo['imagepath'] =~ /RW2$/
-      @faces = calc_faces(faces, photo['rotation'].to_i, photo['raw_factor_w'] || 1, photo['raw_factor_h'] || 1)
-      @facecomment = "Using [raw] hacked RAW face rectangles"
-    else
-      if @mod_faces and editlist !~ /Crop/i
-        @faces = @mod_faces
-      else
-        @faces = @orig_faces
-      end
-      #@faces = (@orig_faces + @mod_faces).flatten
-      #@facecomment = "Using [edit] RKVersionFaceRectangles"
-      @facecomment = "Using [orig] RKDetectedFace, RKFaceName"
-    end
-    j = File.open(origxmppath, 'w')
-    j.puts(ERB.new(xmp, 0, '>').result)
-    j.close
-    done_xmp[origxmppath] = true
-  end
-  if photo['version_number'].to_i == 1 and modxmppath and !File.exist?(modxmppath)
-    if @mod_faces.empty?
-      @faces = @orig_faces
-      @facecomment = "Using [orig] RKDetectedFace, RKFaceName"
-    else
-      @faces = @mod_faces
-      @facecomment = "Using [edit] RKVersionFaceRectangles"
-    end
-    @uuid = photo['uuid']             # for this image, use modified image's uuid
-    j = File.open(modxmppath,  'w')
-    j.puts(ERB.new(xmp_mod, 0, '>').result)
-    j.close
-  end
 
   debug 3, '', true
 
