@@ -240,7 +240,7 @@ end
 ###################################################################################################
 puts "Reading iPhoto database ..." unless ENV['DEBUG']
 debug 1, 'Phase 1: Reading iPhoto SQLite data (Records: Library '.bold, false
-librarydb = SQLite3::Database.new("#{iphotodir}/Database/apdb/Library.apdb")
+librarydb = SQLite3::Database.new("#{iphotodir}/database/photos.db")
 librarydb.results_as_hash = true  # gibt [{"modelId"=>1, "uuid"=>"SwX6W9...", "name"=>".."
 #keyhead, *keywords = librarydb.execute2("SELECT modelId, uuid, name, shortcut FROM RKKeyword")
 #puts "... Available Keywords: #{keywords.collect {|k| k['name'] }.join(", ")}"
