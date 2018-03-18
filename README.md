@@ -1,6 +1,7 @@
 # iphoto2xmp
 Export an Apple iPhoto image library to a new directory (using hardlinks) with all metadata saved in XMP sidecar files.
-Useful if you do not want your iPhoto library moved to a cloud-centric Photos app with less features.
+This is useful if you do not want your iPhoto library moved to a cloud-centric Photos app with less features.
+XML sidecar files are used by many asset management tools, e.g. Adobe Lightroom, Photoshop and so on - so the result should be editable and useful in a lot of different tools.
 
 This script will export your Apple iPhoto library to a new directory structure (folders according to iPhoto "Events") using a standard metadata format (XMP sidecar files) wherever possible, so that you can import your image library to a different application (DAM = Digital Asset Management) and keep all your image metadata intact.
 
@@ -35,9 +36,11 @@ For Ubuntu and Ruby 2.2, this means e.g.
 
     ruby iphoto2xmp.rb "~/Pictures/My iPhoto library" "~/Pictures/Export Here"
 
-Use a `DEBUG` environment variable to print out debugging information. For example, `DEBUG=1` will print out basic information about all found images. `DEBUG=3` will print out all metadata found in all images including faces.
+Use a `DEBUG` environment variable to print out debugging information. For example, `DEBUG=1` will print out basic information about all found images. `DEBUG=3` will print out all metadata found in all images including faces - this is a LOT of text. If you run the 'bash' shell, you can type
 
     DEBUG=1 ruby iphoto2xmp.rb "~/Pictures/My iPhoto library" "~/Pictures/Export Here"
+
+Otherwise set DEBUG=1 before executing the script according to your shell's syntax.
 
 ## Metadata debugging
 
