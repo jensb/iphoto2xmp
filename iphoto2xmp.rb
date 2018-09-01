@@ -21,7 +21,7 @@ require 'find'              # required to find orphaned images
 require 'fileutils'         # required to move and link files around
 require 'sqlite3'           # required to access iPhoto database
 require 'time'              # required to convert integer timestamps
-require 'exifr'             # required to read orientation metadata from image files
+require 'exifr/jpeg'        # required to read orientation metadata from image files
 require 'cfpropertylist'    # required to read binary plist blobs in SQLite3 dbs, 'plist' gem can't do this
 require 'erb'               # template engine
 require 'pp'                # to pretty print PList extractions

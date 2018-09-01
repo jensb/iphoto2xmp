@@ -23,6 +23,7 @@ EXIF and other data which was in the original images is of course preserved but 
     require 'fileutils'         # required to move and link files around 
     require 'sqlite3'           # required to access iPhoto database
     require 'time'              # required to convert integer timestamps
+    require 'exifr'             # required to read orientation metadata from image files
     require 'cfpropertylist'    # required to read binary plist blobs in SQLite3 dbs, 'plist' gem can't do this
     require 'erb'               # template engine
     require 'pp'                # to pretty print PList extractions
@@ -30,7 +31,12 @@ EXIF and other data which was in the original images is of course preserved but 
 For Ubuntu and Ruby 2.2, this means e.g.
 
     sudo apt-get install ruby2.2 ruby2.2-dev libsqlite3-dev
-    sudo gem2.2 install sqlite3 progressbar CFPropertyList
+    sudo gem2.2 install sqlite3 progressbar CFPropertyList exifr
+
+For Mac OS X Sierra, MacPorts and Ruby 2.5, this means
+
+    sudo port install ruby25
+    sudo port install sqlite3 progressbar findutils CFPropertyList exifr
 
 Note that the default installed Ruby 2.0 on Mac OS Sierra will *not* work, since Apple ships this with outdated OpenSSL libraries that cannot install Gems any more, because rubygems.org now prohibits TLSv1 connections (see https://github.com/rubygems/rubygems/issues/1912).
 
