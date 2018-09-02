@@ -36,7 +36,7 @@ For Ubuntu and Ruby 2.2, this means e.g.
 For Mac OS X Sierra, MacPorts and Ruby 2.5, this means
 
     sudo port install ruby25
-    sudo gem2.5 install sqlite3 progressbar findutils CFPropertyList exifr
+    sudo gem2.5 install sqlite3 progressbar fileutils CFPropertyList exifr
 
 Note that the default installed Ruby 2.0 on Mac OS Sierra will *not* work, since Apple ships this with outdated OpenSSL libraries that cannot install Gems any more, because rubygems.org now prohibits TLSv1 connections (see https://github.com/rubygems/rubygems/issues/1912).
 
