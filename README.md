@@ -18,6 +18,8 @@ EXIF and other data which was in the original images is of course preserved but 
 
 ## Requirements
 
+The main Ruby source file `iphoto2xmp.rb` lists the following requirements. Some of these have to be installed before using the script.
+
     require 'progressbar'       # required for eye candy during conversion
     require 'find'              # required to find orphaned images
     require 'fileutils'         # required to move and link files around 
@@ -41,6 +43,8 @@ For Mac OS X Sierra, MacPorts and Ruby 2.5, this means
 Note that the default installed Ruby 2.0 on Mac OS Sierra will *not* work, since Apple ships this with outdated OpenSSL libraries that cannot install Gems any more, because rubygems.org now prohibits TLSv1 connections (see https://github.com/rubygems/rubygems/issues/1912).
 
 ## Usage
+
+Download `iphoto2xmp.rb` and `iphoto2xmp_template.xmp.erb` and then run it as follows: 
 
     ruby iphoto2xmp.rb "~/Pictures/My iPhoto library" "~/Pictures/Export Here"
 
