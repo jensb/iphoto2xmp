@@ -33,7 +33,7 @@ The main Ruby source file `iphoto2xmp.rb` lists the following requirements. Some
 For Ubuntu (I tested 14.04, 16.04 and 18.04 with Ruby 1.9, 2.2 and 2.5), this means e.g.
 
     sudo apt-get install ruby ruby-dev libsqlite3-dev
-    sudo gem2.2 install sqlite3 progressbar CFPropertyList exifr
+    sudo gem install sqlite3 progressbar CFPropertyList exifr
 
 For Mac OS X Sierra, MacPorts and Ruby 2.5, this means
 
