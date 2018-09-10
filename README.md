@@ -32,10 +32,12 @@ The main Ruby source file `iphoto2xmp.rb` lists the following requirements. Some
 
 For Ubuntu (I tested 14.04, 16.04 and 18.04 with Ruby 1.9, 2.2 and 2.5), this means e.g.
 
-    sudo apt-get install ruby ruby-dev libsqlite3-dev
+    sudo apt-get install ruby ruby-dev libsqlite3-dev gcc make git
     sudo gem install sqlite3 progressbar CFPropertyList exifr
-
-For Mac OS X Sierra, MacPorts and Ruby 2.5, this means
+    git clone https://github.com/jensb/iphoto2xmp.git
+    cd iphoto2xmp
+    
+For Mac OS X Sierra, MacPorts and Ruby 2.5, this means 
 
     sudo port install ruby25
     sudo gem2.5 install sqlite3 progressbar fileutils CFPropertyList exifr
@@ -44,7 +46,7 @@ Note that the default installed Ruby 2.0 on Mac OS Sierra will *not* work, since
 
 ## Usage
 
-Download `iphoto2xmp.rb` and `iphoto2xmp_template.xmp.erb` and then run it as follows: 
+Download `iphoto2xmp.rb` and `iphoto2xmp_template.xmp.erb` (or clone the repository using `git`, like described above) and then run it as follows: 
 
     ruby iphoto2xmp.rb "~/Pictures/My iPhoto library" "~/Pictures/Export Here"
 
@@ -53,6 +55,7 @@ Use a `DEBUG` environment variable to print out debugging information. For examp
     DEBUG=1 ruby iphoto2xmp.rb "~/Pictures/My iPhoto library" "~/Pictures/Export Here"
 
 Otherwise set DEBUG=1 before executing the script according to your shell's syntax.
+The `DEBUG` variable is nothing special for Ruby, it is just a variable used in the script to decide how much information to show during operation.
 
 ## Metadata debugging
 
