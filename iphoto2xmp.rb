@@ -89,7 +89,12 @@ def link_photo(basedir, outdir, photo, imgfile, origfile)
     $known[imgpath] = true
     ver = 2
     while File.exist?(destpath)
-      destpath.sub!(/(_v[0-9]+)?\.([^.]*)$/, "_v#{ver}.\\2")
+      raise "Trying to create >100 versions of an image. Something is wrong, please file a bug." if ver > 99
+      if destpath =~ /\./
+        destpath.sub!(/(_v[0-9]+)?\.([^.]*)$/, "_v#{ver}.\\2")
+      else
+        destpath.sub!(/(_v[0-9]+)?$/, "_v#{ver}")
+      end
       ver += 1
     end
     FileUtils.ln(imgpath, destpath)
