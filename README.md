@@ -46,7 +46,7 @@ Note that the default installed Ruby 2.0 on Mac OS Sierra will *not* work, since
 
 ## Usage
 
-Download `iphoto2xmp.rb` and `iphoto2xmp_template.xmp.erb` (or clone the repository using `git`, like described above) and then run it as follows: 
+1. Download `iphoto2xmp.rb` and `iphoto2xmp_template.xmp.erb` (or clone the repository using `git`, like described above) and then run it as follows: 
 
     ruby iphoto2xmp.rb "~/Pictures/My iPhoto library" "~/Pictures/Export Here"
 
@@ -56,6 +56,10 @@ Use a `DEBUG` environment variable to print out debugging information. For examp
 
 Otherwise set DEBUG=1 before executing the script according to your shell's syntax.
 The `DEBUG` variable is nothing special for Ruby, it is just a variable used in the script to decide how much information to show during operation.
+
+2. Open your favorite DAM (Digital Asset Management - e.g. images) application, e.g. Digikam, and point it to the export target folder.
+In Digikam, this folder can be added as a "collection". In Digikam, you also need to enable "Read metadata from sidecar files" in the settings under "Metadata".
+
 
 ## Metadata debugging
 
