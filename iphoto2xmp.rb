@@ -59,6 +59,7 @@ end
 def debug(level, str, newline=true)
   return unless level==0 or (e = ENV['DEBUG'] and e.to_i >= level)
   if newline ; puts str else print str end
+  STDOUT.flush!
 end
 
 
