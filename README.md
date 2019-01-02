@@ -99,24 +99,24 @@ The original idea was taken from https://gist.github.com/lpar/2191225, but the s
 ## Exported Metadata
 The script can currently export the following metadata:
 
- * Image filenames (duh)
- * All EXIF data within the original image (preserved inside the files)
- * Captions / Titles
- * Descriptions
- * Keywords (iPhoto does not use hierarchical tags)
- * Date taken, Date modified (in iPhoto), date imported (into iPhoto) (as EXIF flag "DateTimeDigitized")
- * Event names (used for the folder structure, not exported into XMP)
+ * **Image filenames** (duh)
+ * All **EXIF data** within the original image (preserved inside the files)
+ * **Captions** / Titles
+ * **Descriptions**
+ * **Keywords** (iPhoto does not use hierarchical tags)
+ * **Date** taken, Date modified (in iPhoto), date imported (into iPhoto) (as EXIF flag "DateTimeDigitized")
+ * **Event** names (used for the folder structure, not exported into XMP)
    Note: photos in a "New Event" (i.e. just imported into iPhoto) will be imported into a "00_ImagesWithoutEvents" directory.
- * GPS coordinates
- * Edited and original images, edit operation (eg. "Crop", "WhiteBalance", ...)
- * Face names and face coordinates
+ * **GPS** coordinates
+ * **Edited** and original images, edit operation (eg. "Crop", "WhiteBalance", ...)
+ * **Face** names and face coordinates
  * Face names and face coordinates in rotated or cropped images
    (TODO: still buggy if the image had EXIF rotation flags set since then iPhoto saves weird position values)
- * Hidden, Starred, Flagged, Editable, Original, isInTrash flags (as tags)
+ * **Hidden, Starred, Flagged, Editable, Original, isInTrash flags** (as tags)
  * iPhoto and iOS edit operations as additional *.plist sidecar files (so far, not all are decoded)
- * Albums as tag collections (Library:RKFolder/RKAlbum, Library:RKAlbumVersion) into "TopLevelAlbums/" tag hierarchy
- * iPhoto's Slideshows, Calendars, Cards, Books as tag collections (to identify which photos were used) into "TopLevelKeepsakes/" tag hierarchy
- * Smart Album rules into a separate text file so they can be recreated in the target application
+ * **Albums** as tag collections (Library:RKFolder/RKAlbum, Library:RKAlbumVersion) into "TopLevelAlbums/" tag hierarchy
+ * iPhoto's **Slideshows, Calendars, Cards, Books** as tag collections (to identify which photos were used) into "TopLevelKeepsakes/" tag hierarchy
+ * **Smart Album rules** into a separate text file so they can be recreated in the target application
    (the structure is not decoded yet but can be looked at)
  
 Digikam 5.x might require selecting all images and performing an "Item > Reread Image Metadata" operation before all metadata is visible in the application.
