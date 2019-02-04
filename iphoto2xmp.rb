@@ -59,7 +59,7 @@ end
 def debug(level, str, newline=true)
   return unless level==0 or (e = ENV['DEBUG'] and e.to_i >= level)
   if newline ; puts str else print str end
-  STDOUT.flush!
+  STDOUT.flush
 end
 
 
@@ -848,5 +848,9 @@ Find.find("#{iphotodir}/Masters").each do |file|
     end
   end
 end
+
+
+puts "Done! If your albums contain special characters, you might want to run something like
+  'convmv -f utf8 -t utf8 --nfc --notest -r #{outdir}' to convert UTF8 charset variants."
 
 # vim:set ts=2 expandtab:
