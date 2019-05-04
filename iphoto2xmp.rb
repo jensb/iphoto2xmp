@@ -48,6 +48,9 @@ class String
   def violet; "\e[35m#{self}\e[0m" end
   def grey; "\e[37m#{self}\e[0m" end
   def sqlclean; self.gsub(/\'/, "''").gsub(/%/, "\%") end
+  #def unicode_clean  # it seems .unicode_normalize doesn't really work
+  #  tr("", "äöüÄÖÜß")
+  #end
 end
 
 
@@ -68,17 +71,19 @@ end
 def link_photo(basedir, outdir, photo, imgfile, origfile)
   imgpath  = "#{basedir}/#{imgfile}"  # source image path, absolute
   if photo['rollname']
+    photo['rollname'] = photo['rollname'].gsub(/\//, '-')
+    imgbasepath = File.basename(imgpath)
     # FIXME: just for faces debugging
-    #destpath = "#{outdir}/#{photo['rotation']}/#{File.basename(imgpath)}"
+    #destpath = "#{outdir}/#{photo['rotation']}/#{imgbasepath}"
     if year = parse_date(photo['roll_min_image_date'], photo['roll_min_image_tz'])
-      destpath = "#{outdir}/#{year.strftime("%Y")}/#{photo['rollname']}/#{File.basename(imgpath)}"
+      destpath = "#{outdir}/#{year.strftime("%Y")}/#{photo['rollname']}/#{imgbasepath}"
     else
-      "#{outdir}/#{photo['rollname']}/#{File.basename(imgpath)}"
+      "#{outdir}/#{photo['rollname']}/#{imgbasepath}"
     end
   else
     "#{outdir}/00_ImagesWithoutEvents/#{imgfile}"
   end
-  #destpath = photo['rollname']  ?  "#{outdir}/#{photo['rollname']}/#{File.basename(imgpath)}"
+  #destpath = photo['rollname']  ?  "#{outdir}/#{photo['rollname']}/#{imgbasepath}"
   #                              :  "#{outdir}#{imgfile}"
   destdir  = File.dirname(destpath)
   # if origfile differs from imgfile, append "_v1" to imgfiles's basename to avoid overwriting
@@ -133,8 +138,9 @@ def parse_date(intdate, tz_str="", strf=nil, deduct_tz=false)
   # Apple saves DST times differently so Ruby is off by 1h during DST. Correct here.
   t2 = if t.dst? ; t - (60*60) else t end
   if deduct_tz
-    t2 += Time.new.utc_offset
-    unless t.dst?; t2 -= 3600 ; end
+    # TODO: do not use the current local timezone, but the photo's timezone
+    t2 += t2.utc_offset
+    # unless t.dst?; t2 -= 3600 ; end
   end
   #debug 1, "  .. Time: #{t}, #{t2}, dst=#{t.dst?}, int=#{intdate}, tz=#{tz_str}, deduct=#{deduct_tz}, offset=#{Time.zone_offset(tz_str)}"
   strf ? t2.strftime(strf) : t2
@@ -187,7 +193,7 @@ def calc_faces_edit(faces)
     {'mode' => 'FaceEdit ',
       'topleftx' => topleftx, 'toplefty' => toplefty,
       'centerx'  => centerx, 'centery' => centery, 'width' => width, 'height' => height,
-      'name' => "#{face['name']} [mod]", 'email' => face['email'] }
+      'name' => "#{face['name']}", 'email' => face['email'] }
   end
   res.each {|f|
     debug 3, sprintf("  ... %s: tl: %.6f %.6f, wh: %.6f %.6f;\t%s",
@@ -222,7 +228,7 @@ def calc_faces(faces, frot=0, raw_factor_x=1, raw_factor_y=1)
     [
       {'mode' => mode, 'topleftx' => topleftx, 'toplefty' => toplefty,
        'centerx'  => centerx, 'centery' => centery, 'width' => width, 'height' => height,
-       'name' => "#{face['name']} [#{mode||frot}]" || 'Unknown', 'email' => face['email'] },
+       'name' => face['name'] || 'Unknown', 'email' => face['email'] },
      # {'mode' => "#{mode}2", 'topleftx' => topleftx, 'toplefty' => toplefty,
      #  'centerx'  => centerx, 'centery' => centery, 'width' => width, 'height' => height,
      #  'name' => "#{face['name']} [#{mode||frot}]" || 'Unknown', 'email' => face['email'] },
@@ -300,6 +306,10 @@ masterhead, *masters = librarydb.execute2(
     LEFT JOIN RKImportGroup i ON m.importGroupUuid = i.uuid
  ")
 debug 1, "#{masters.count}; ", false
+masters.each do |photo|
+  photo['caption'] = photo['caption'].unicode_normalize if photo['caption']
+  photo['rollname'] = photo['rollname'].unicode_normalize if photo['rollname']
+end
 #endregion
 
 
@@ -309,6 +319,9 @@ placehead, *places = propertydb.execute2('SELECT
   p.modelId, p.uuid, p.defaultName, p.minLatitude, p.minLongitude, p.maxLatitude, p.maxLongitude, p.centroid, p.userDefined
   FROM RKPlace p');
 # placehead, *places = propertydb.execute2("SELECT p.modelId, p.uuid, p.defaultName, p.minLatitude, p.minLongitude, p.maxLatitude, p.maxLongitude, p.centroid, p.userDefined, n.language, n.description FROM RKPlace p INNER JOIN RKPlaceName n ON p.modelId=n.placeId");
+places.each do |place|
+  place['defaultName'] = place['defaultName'].unicode_normalize if place['defaultName']
+end
 placelist = places.inject({}) {|h,place| h[place['modelId']] = place; h }
 debug 1, "Properties (#{places.count} places; ", false
 
@@ -317,7 +330,7 @@ deschead, *descs = propertydb.execute2("SELECT
   i.modelId AS id, i.versionId AS versionId, i.modDate AS modDate, s.stringProperty AS string
 FROM RKIptcProperty i LEFT JOIN RKUniqueString s ON i.stringId=s.modelId
 WHERE i.propertyKey = 'Caption/Abstract' ORDER BY versionId")
-photodescs = descs.inject({}) {|h,desc| h[desc['versionId']] = desc['string']; h }
+photodescs = descs.inject({}) {|h,desc| h[desc['versionId']] = desc['string'].unicode_normalize if desc['string']; h }
 # FYI: this is the date of adding the description, not the last photo edit date
 photomoddates = descs.inject({}) {|h,desc| h[desc['versionId']] = desc['modDate']; h }
 debug 1, "Description #{descs.count}; ", false
@@ -327,6 +340,10 @@ facedb.results_as_hash = true
 
 # Get list of names to associate with modified face rectangle list (which does not contain this info).
 fnamehead, *fnames = facedb.execute2('SELECT modelId ,uuid ,faceKey ,name ,email FROM RKFaceName')
+fnames.each do |fname|
+  fname['name'] = fname['name'].unicode_normalize if fname['name']
+  fname['email'] = fname['email'].unicode_normalize if fname['email']
+end
 fnamelist = fnames.inject({}) {|h,fname| h[fname['faceKey'].to_i] = fname; h }
 debug 1, "Faces #{fnamelist.size}; ", false
 
@@ -336,6 +353,8 @@ notehead, *notes = librarydb.execute2("SELECT RKNote.note AS note, RKFolder.name
   WHERE RKFolder.name IS NOT NULL AND RKFolder.name != '' ORDER BY RKFolder.modelId")
 File.open("#{outdir}/event_notes.sql", 'w') do |f|
   notes.each do |note|
+    note['note'] = note['note'].unicode_normalize if note['note']
+    note['name'] = note['name'].unicode_normalize if note['name']
     f.puts("UPDATE Albums SET caption='#{note['note'].sqlclean}' WHERE relativePath LIKE '%/#{note['name'].sqlclean}';")
   end
 end unless notes.empty?
@@ -352,6 +371,10 @@ folderhead, *folderdata = librarydb.execute2(
      WHERE -- isMagic=0 AND   -- Magic=1 folders are iPhoto internal like Trash, Library etc. but we need these for the path
        folderType=1           -- folderType=2 are Events. We handle those as filesystem directories.
   ')
+folderdata.each do |data|
+  data['name'] = data['name'].unicode_normalize if data['name']
+  data['folderPath'] = data['folderPath'].unicode_normalize if data['folderPath']
+end
 # folderPath is a string like "modelId1/modelId2/...". Convert these using the real folder names to get the path strings.
 folderlist  = folderdata.inject({}) {|h,folder| h[folder['modelId'].to_i] = folder; h }
 foldernames = folderdata.inject({}) {|h,folder| h[folder['modelId'].to_s] = folder['name']; h }
@@ -445,12 +468,28 @@ masters.each do |photo|
   end
   modpath = File.exist?("#{basedir}/#{modpath1}") ? modpath1 : modpath2
 
+
+  # Get edits. Required to decide if we want the Preview.
+  # Discard pseudo-Edits like RAW decoding and (perhaps?) rotations
+  # but save the others in the XMP edit history.
+  edithead, *edits = librarydb.execute2(
+    "SELECT a.name AS adj_name    -- RKRawDecodeOperation, RKStraightenCropOperation, ...
+                                  -- RAW-Decoding and Rotation are not edit operations, strictly speaking
+           ,a.adjIndex as adj_index
+           ,a.data as data
+     FROM RKImageAdjustment a
+    WHERE a.versionUuid='#{photo['uuid']}'")
+  edits.each do |edit|
+    edit['adj_name'] = edit['adj_name'].unicode_normalize if edit['adj_name']
+  end
+  
   origxmppath, origdestpath = link_photo(basedir, outdir, photo, origpath, nil)
   next if done_xmp[origxmppath]    # do not overwrite master XMP twice
   # link_photo needs origpath to do size comparison for modified images
   # only perform link_photo for "non-videos" and when a modified image should exist
   # since iPhoto creates "link mp4" files without real video content for "modified" videos (useless)
-  if photo['version_number'].to_i > 0 and photo['mediatype'] != 'VIDT'
+  # TODO: edits seem to be rotated, but originals aren't. Face rectangles however are always rotated ...
+  if photo['version_number'].to_i > 0 and photo['mediatype'] != 'VIDT' #and edits.count > 0
     modxmppath, moddestpath = link_photo(basedir, outdir, photo, modpath, origpath)
   end
 
@@ -474,7 +513,7 @@ masters.each do |photo|
   if photo['uuid'] == photo['poster_version_uuid']
     subsearch = sprintf("SELECT i.id FROM Images i LEFT JOIN Albums a ON i.album=a.id
       LEFT JOIN ImageComments c ON c.imageid=i.id WHERE c.comment='%s' AND a.relativePath LIKE '%%/%s' LIMIT 1",
-                      photo['caption'].sqlclean, photo['rollname'].sqlclean)
+           photo['caption'].sqlclean, photo['rollname'].sqlclean)
     eventmetafile.printf("UPDATE Albums SET date='%s', icon=(%s) WHERE relativePath LIKE '%%/%s';\n",
            parse_date(photo['roll_min_image_date'], photo['timezone'], '%Y-%m-%d'), subsearch, photo['rollname'].sqlclean)
   end
@@ -483,8 +522,8 @@ masters.each do |photo|
   # Group modified and original images just like in iPhoto.
   # Images have to be identified by (possibly modified) filename and album path since the XMP UUID is not kept
   if modxmppath
-    origsub = sprintf("SELECT i.id FROM Images i LEFT JOIN Albums a ON i.album=a.id WHERE i.name='%s' AND a.relativePath LIKE '%%/%s'", File.basename(origxmppath, '.*').sqlclean, photo['rollname'].sqlclean)
-    mod_sub = sprintf("SELECT i.id FROM Images i LEFT JOIN Albums a ON i.album=a.id WHERE i.name='%s' AND a.relativePath LIKE '%%/%s'", File.basename(modxmppath, '.*').sqlclean, photo['rollname'].sqlclean)
+    origsub = sprintf("SELECT i.id FROM Images i LEFT JOIN Albums a ON i.album=a.id WHERE i.name='%s' AND a.relativePath LIKE '%%/%s'", File.basename(origxmppath, '.*').sqlclean.unicode_normalize, photo['rollname'].sqlclean)
+     mod_sub = sprintf("SELECT i.id FROM Images i LEFT JOIN Albums a ON i.album=a.id WHERE i.name='%s' AND a.relativePath LIKE '%%/%s'", File.basename(modxmppath, '.*').sqlclean.unicode_normalize, photo['rollname'].sqlclean)
     # last parameter: 1 = versioned groups,  2 = normal groups. Here we want 1.
     group_mod_data << sprintf("((%s), (%s), 1)", mod_sub, origsub)
     # noinspection RubyScope
@@ -501,9 +540,11 @@ masters.each do |photo|
     end
     curr_roll = photo['rollname']
   end
+  # Seems to be always in local time but with the time zone of the time when iphoto2xmp ran. Bad!
   @date_taken = parse_date(photo['date_taken'], photo['timezone'])
-  @date_modified = parse_date(photo['date_modified'], photo['timezone'])
-  @date_imported = parse_date(photo['date_imported'], photo['timezone'])
+  # TODO: date_modified is always utc_offset hours early, but only for Panasonic cameras, not for smartphones. Strange!
+  @date_modified = parse_date(photo['date_modified'], photo['timezone'], nil, true)
+  @date_imported = parse_date(photo['date_imported'], photo['timezone'], nil, true)
   datestr = "taken:#{@date_taken.strftime("%Y%m%d-%H%M%S%z") rescue "MISSING".red} edit:#{@date_modified.strftime("%Y%m%d-%H%M%S%z") rescue "MISSING".red} import:#{@date_imported.strftime("%Y%m%d-%H%M%S%z") rescue "MISSING".red}"
   str = " #{photo['id']}(#{photo['master_id']}): #{File.basename(photo['imagepath'])}\t#{photo['caption']}\t#{photo['rating']}* #{photo['uuid'][0..5]}…/#{photo['master_uuid'][0..5]}…\t#{datestr}\t#{p=placelist[photo['place_id']] ? "Loc:#{p}" : ""}"
   debug 1, (ENV['DEBUG'].to_i > 1 ? str.bold : str), true
@@ -522,6 +563,15 @@ masters.each do |photo|
     debug 2, "  Mod : #{photo['processed_height']}x#{photo['processed_width']}, #{modpath} ", false
     debug 2, modexists ? '(found)'.green : '(missing)'.red, true
     debug 2, "     => #{moddestpath}".cyan, true  if File.exist?("#{basedir}/#{modpath}")
+  end
+
+  # MP4 files have the Create and Modify timestamps in the files themselves, but they are often incorrect.
+  # Sync with the database values for Create and Modify dates.
+  # WARNING. This will change your original files and only needs to be done once.
+  # So if you want this, set MP4DATES=1 before running this script
+  if ENV['MP4DATES'] and origdestpath =~ /mp4$/
+    `exiftool "-CreateDate=#{@date_taken.strftime("%Y%m%d-%H%M%S")}" "-ModifyDate=#{@date_modified.strftime("%Y%m%d-%H%M%S")}" -wm w -P "#{outdir}/#{origdestpath}"`
+    debug 1, "  ... exiftool \"-CreateDate=#{@date_taken.strftime("%Y%m%d-%H%M%S")}\" \"-ModifyDate=#{@date_modified.strftime("%Y%m%d-%H%M%S")}\" -wm w -P \"#{outdir}/#{origdestpath}\""
   end
 
   exif_rot_orig = ''
@@ -575,7 +625,7 @@ masters.each do |photo|
   debug 2, "  GPS : lat:#{@latitude} lng:#{@longitude}, #{@gpslocation}".violet, true
 
 
-  # Get keywords. Convert iPhoto specific flags as keywords too.
+  # Get keywords. Convert iPhoto specific flags as keywords too. Replace "." by "/" to create hierarchy.
   @keylist = Array.new
   photokwheader, *photokw = librarydb.execute2("SELECT
       RKVersion.uuid AS uuid
@@ -584,6 +634,10 @@ masters.each do |photo|
    FROM RKKeywordForVersion INNER JOIN RKversion ON RKKeywordForVersion.versionId=RKVersion.modelId
                             INNER JOIN RKKeyword ON RKKeywordForVersion.keywordId=RKKeyword.modelId
    WHERE RKVersion.uuid='#{photo['uuid']}'")
+  photokw.each do |keyword|
+    next unless keyword['name']
+    keyword['name'] = keyword['name'].tr(".", "/").gsub(/\&/, '&amp;').gsub(/\</, '&lt;').unicode_normalize
+  end
   @keylist = photokw.collect {|k| k['name'] }
   @keylist << 'iPhoto/Hidden' if photo['hidden']==1
   @keylist << 'iPhoto/Flagged' if photo['flagged']==1
@@ -598,6 +652,9 @@ masters.each do |photo|
       FROM RKAlbumVersion av LEFT JOIN RKAlbum a ON av.albumId=a.modelId
                              LEFT JOIN RKFolder f ON f.uuid=a.folderUuid
      WHERE av.versionId=#{photo['id'].to_i}")
+  albumdata.each do |album|
+    album['name'] = album['name'].unicode_normalize if album['name']
+  end
   albumlist  = albumdata.uniq.inject({}) {|h,album|
     h[album['modelId'].to_i] = album
     h[album['modelId'].to_i]['path'] = "#{folderlist[album['f_id']]['folderPath']}/#{album['name']}"
@@ -607,15 +664,6 @@ masters.each do |photo|
   debug 2, "  AlbumTags: #{albums}".blue, true unless albums.empty?
   @keylist += albums
 
-  # Get edits. Discard pseudo-Edits like RAW decoding and (perhaps?) rotations
-  # but save the others in the XMP edit history.
-  edithead, *edits = librarydb.execute2(
-    "SELECT a.name AS adj_name    -- RKRawDecodeOperation, RKStraightenCropOperation, ...
-                                  -- RAW-Decoding and Rotation are not edit operations, strictly speaking
-           ,a.adjIndex as adj_index
-           ,a.data as data
-     FROM RKImageAdjustment a
-    WHERE a.versionUuid='#{photo['uuid']}'")
 
   # TODO: Save iPhoto/iOS edit operations in XMP structure (digiKam:history?)
   # TODO: Use History.apdb::RKImageAdjustmentChange table to fill edit operations.
@@ -633,7 +681,7 @@ masters.each do |photo|
       check = false
       edit_plist_hash = CFPropertyList.native_types(CFPropertyList::List.new(data: edit['data']).value)
       # save raw PropertyList data in additional sidecar file for later analysis
-      File.open(modxmppath.gsub(/xmp/, "plist_#{edit['adj_name']}"), 'w') do |j|
+      File.open(modxmppath.gsub(/xmp/, "#{edit['adj_name']}.plist"), 'w') do |j|
         PP.pp(edit_plist_hash, j)
       end
 
@@ -698,6 +746,11 @@ masters.each do |photo|
       LEFT JOIN RKFaceName n ON n.faceKey=d.faceKey
       WHERE d.masterUuid='#{photo['master_uuid']}' AND d.ignore=0 AND d.rejected=0
       ORDER BY d.modelId")  # LEFT JOIN because we also want unknown faces
+  faces.each do |face|
+    face['name'] = face['name'].unicode_normalize if face['name']
+    face['full_name'] = face['full_name'].unicode_normalize if face['full_name']
+    face['email'] = face['email'].unicode_normalize if face['email']
+  end
 
   # Get face rectangles from modified images (cropped, rotated, etc). No need to calculate those manually.
   # This might be empty, in that case use list of unmodified faces.
