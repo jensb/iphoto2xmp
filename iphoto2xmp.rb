@@ -78,10 +78,10 @@ def link_photo(basedir, outdir, photo, imgfile, origfile)
     if year = parse_date(photo['roll_min_image_date'], photo['roll_min_image_tz'])
       destpath = "#{outdir}/#{year.strftime("%Y")}/#{photo['rollname']}/#{imgbasepath}"
     else
-      "#{outdir}/#{photo['rollname']}/#{imgbasepath}"
+      destpath = "#{outdir}/#{photo['rollname']}/#{imgbasepath}"
     end
   else
-    "#{outdir}/00_ImagesWithoutEvents/#{imgfile}"
+    destpath = "#{outdir}/00_ImagesWithoutEvents/#{imgfile}"
   end
   #destpath = photo['rollname']  ?  "#{outdir}/#{photo['rollname']}/#{imgbasepath}"
   #                              :  "#{outdir}#{imgfile}"
