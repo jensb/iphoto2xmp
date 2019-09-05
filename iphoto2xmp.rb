@@ -26,6 +26,8 @@ require 'cfpropertylist'    # required to read binary plist blobs in SQLite3 dbs
 require 'erb'               # template engine
 require 'pp'                # to pretty print PList extractions
 
+Encoding.default_external = "UTF-8"
+
 iphotodir = ARGV[0]
 outdir = ARGV[1]
 
@@ -70,20 +72,19 @@ end
 # TODO: prevent duplicate links from the same original photo.
 def link_photo(basedir, outdir, photo, imgfile, origfile)
   imgpath  = "#{basedir}/#{imgfile}"  # source image path, absolute
-  if photo['rollname']
-    photo['rollname'] = photo['rollname'].gsub(/\//, '-')
-    imgbasepath = File.basename(imgpath)
+  destpath = if photo['rollname']
+    "#{outdir}/#{photo['rollname']}/#{File.basename(imgpath)}"
     # FIXME: just for faces debugging
-    #destpath = "#{outdir}/#{photo['rotation']}/#{imgbasepath}"
-    if year = parse_date(photo['roll_min_image_date'], photo['roll_min_image_tz'])
-      destpath = "#{outdir}/#{year.strftime("%Y")}/#{photo['rollname']}/#{imgbasepath}"
-    else
-      "#{outdir}/#{photo['rollname']}/#{imgbasepath}"
-    end
+    #destpath = "#{outdir}/#{photo['rotation']}/#{File.basename(imgpath)}"
+    #if year = parse_date(photo['roll_min_image_date'], photo['roll_min_image_tz'])
+    #  destpath = "#{outdir}/#{year.strftime("%Y")}/#{photo['rollname']}/#{File.basename(imgpath)}"
+    #else
+    #  "#{outdir}/#{photo['rollname']}/#{File.basename(imgpath)}"
+    #end
   else
     "#{outdir}/00_ImagesWithoutEvents/#{imgfile}"
   end
-  #destpath = photo['rollname']  ?  "#{outdir}/#{photo['rollname']}/#{imgbasepath}"
+  #destpath = photo['rollname']  ?  "#{outdir}/#{photo['rollname']}/#{File.basename(imgpath)}"
   #                              :  "#{outdir}#{imgfile}"
   destdir  = File.dirname(destpath)
   # if origfile differs from imgfile, append "_v1" to imgfiles's basename to avoid overwriting
@@ -513,17 +514,17 @@ masters.each do |photo|
   if photo['uuid'] == photo['poster_version_uuid']
     subsearch = sprintf("SELECT i.id FROM Images i LEFT JOIN Albums a ON i.album=a.id
       LEFT JOIN ImageComments c ON c.imageid=i.id WHERE c.comment='%s' AND a.relativePath LIKE '%%/%s' LIMIT 1",
-           photo['caption'].sqlclean, photo['rollname'].sqlclean)
+        photo['caption']&.sqlclean, photo['rollname']&.sqlclean)
     eventmetafile.printf("UPDATE Albums SET date='%s', icon=(%s) WHERE relativePath LIKE '%%/%s';\n",
-           parse_date(photo['roll_min_image_date'], photo['timezone'], '%Y-%m-%d'), subsearch, photo['rollname'].sqlclean)
+           parse_date(photo['roll_min_image_date'], photo['timezone'], '%Y-%m-%d'), subsearch, photo['rollname']&.sqlclean)
   end
 
 
   # Group modified and original images just like in iPhoto.
   # Images have to be identified by (possibly modified) filename and album path since the XMP UUID is not kept
   if modxmppath
-    origsub = sprintf("SELECT i.id FROM Images i LEFT JOIN Albums a ON i.album=a.id WHERE i.name='%s' AND a.relativePath LIKE '%%/%s'", File.basename(origxmppath, '.*').sqlclean.unicode_normalize, photo['rollname'].sqlclean)
-     mod_sub = sprintf("SELECT i.id FROM Images i LEFT JOIN Albums a ON i.album=a.id WHERE i.name='%s' AND a.relativePath LIKE '%%/%s'", File.basename(modxmppath, '.*').sqlclean.unicode_normalize, photo['rollname'].sqlclean)
+    origsub = sprintf("SELECT i.id FROM Images i LEFT JOIN Albums a ON i.album=a.id WHERE i.name='%s' AND a.relativePath LIKE '%%/%s'", File.basename(origxmppath, '.*')&.sqlclean.unicode_normalize, photo['rollname']&.sqlclean)
+     mod_sub = sprintf("SELECT i.id FROM Images i LEFT JOIN Albums a ON i.album=a.id WHERE i.name='%s' AND a.relativePath LIKE '%%/%s'", File.basename(modxmppath, '.*')&.sqlclean.unicode_normalize, photo['rollname']&.sqlclean)
     # last parameter: 1 = versioned groups,  2 = normal groups. Here we want 1.
     group_mod_data << sprintf("((%s), (%s), 1)", mod_sub, origsub)
     # noinspection RubyScope
@@ -791,6 +792,7 @@ masters.each do |photo|
   face_csv_list << facekeys.collect do |fn|
     oface = faces.find {|f| f['face_key'] == fn }#  ; puts oface.inspect
     mface = modfaces_.find {|f| f['face_key'] == fn }#  ; puts mface.inspect
+    next if oface.nil? or mface.nil?
     sprintf("%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f",
       photo['id'].to_s, photo['caption'],
       exif_rot_orig, exif_rot_mod, photo['rotation'].to_s, photo['face_rotation'].to_s,
