@@ -1,3 +1,8 @@
+**Note:**
+iphoto2xmp is unmaintained at the moment, and does not (and will not) support Apple Photos.
+I don't own a Mac any more and don't use iPhoto or Photos any more.
+If you want to export images from a current OS X system, have a look at https://github.com/RhetTbull/osxphotos. I didn't test it but it looks promising.
+
 # iphoto2xmp
 Export an Apple iPhoto image library to a new directory (using hardlinks) with all metadata saved in XMP sidecar files.
 This is useful if you do not want your iPhoto library moved to a cloud-centric Photos app with less features.
