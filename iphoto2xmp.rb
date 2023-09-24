@@ -575,18 +575,22 @@ masters.each do |photo|
   end
 
   exif_rot_orig = ''
-  if File.exist?("#{basedir}/#{origpath}") and origpath =~ /jpg$/i \
-      and exif_rot_orig = EXIFR::JPEG.new("#{basedir}/#{origpath}").orientation || ''
-    exif_rot_orig = convert_exif_rot(exif_rot_orig.to_i)
-  end
   exif_rot_mod = ''
-  if modexists and modpath =~ /jpg$/i \
-      and exif_rot_mod  = EXIFR::JPEG.new("#{basedir}/#{modpath}").orientation || ''
-    exif_rot_mod  = convert_exif_rot(exif_rot_mod.to_i)
+  begin
+    if File.exist?("#{basedir}/#{origpath}") and origpath =~ /jpg$/i \
+        and exif_rot_orig = EXIFR::JPEG.new("#{basedir}/#{origpath}").orientation || ''
+      exif_rot_orig = convert_exif_rot(exif_rot_orig.to_i)
+    end
+    if modexists and modpath =~ /jpg$/i \
+        and exif_rot_mod  = EXIFR::JPEG.new("#{basedir}/#{modpath}").orientation || ''
+      exif_rot_mod  = convert_exif_rot(exif_rot_mod.to_i)
+    end
+    #if photo['face_rotation'].to_i != 0 or photo['rotation'] != 0
+      debug 2, "  Flip: EXIF #{exif_rot_orig}°/#{exif_rot_mod}°, photo #{photo['rotation']}°, face(s): #{photo['face_rotation']}°".blue, true
+    #end
+  rescue EXIRF::MalformedJPEG => e
+    debug 1, "\nWARNING: Not flipping #{basedir}/#{modpath}, caused EXIFR::MalformedJPEG, possibly corrupt image?", true
   end
-  #if photo['face_rotation'].to_i != 0 or photo['rotation'] != 0
-    debug 2, "  Flip: EXIF #{exif_rot_orig}°/#{exif_rot_mod}°, photo #{photo['rotation']}°, face(s): #{photo['face_rotation']}°".blue, true
-  #end
 
   #
   # Build up objects with the metadata in using an ERB template. 
