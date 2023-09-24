@@ -588,7 +588,7 @@ masters.each do |photo|
     #if photo['face_rotation'].to_i != 0 or photo['rotation'] != 0
       debug 2, "  Flip: EXIF #{exif_rot_orig}°/#{exif_rot_mod}°, photo #{photo['rotation']}°, face(s): #{photo['face_rotation']}°".blue, true
     #end
-  rescue EXIRF::MalformedJPEG => e
+  rescue EXIFR::MalformedJPEG => e
     debug 1, "\nWARNING: Not flipping #{basedir}/#{modpath}, caused EXIFR::MalformedJPEG, possibly corrupt image?", true
   end
 
